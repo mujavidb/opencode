@@ -286,6 +286,10 @@ const icons = {
     viewBox: "0 0 16 16",
     body: `<path d="M2 8.5V2H8.5L14 7.5L7.5 14L2 8.5Z" stroke="currentColor" stroke-linejoin="round"/><circle cx="5.25" cy="5.25" r="1" fill="currentColor"/>`,
   },
+  split: {
+    viewBox: "0 0 16 16",
+    body: `<path d="M10.5 2.5H13.5V5.5M5.5 2.5H2.5V5.5M8 13.5V8.5C8 7.7 7.68 6.94 7.12 6.38L2.5 2.5M9.5 6.5L13.5 2.5" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"/>`,
+  },
 }
 
 /** Icon names derived from the shared artwork, with no UI or runtime dependencies. */

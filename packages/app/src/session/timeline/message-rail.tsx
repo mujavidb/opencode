@@ -94,7 +94,8 @@ export function SessionMessageRail(props: {
       const ctx = props.contextByUser.get(user.id)
       const lastAssistant = assistants.at(-1)
       const agentRaw = lastAssistant?.agent ?? ctx?.agent
-      const agent = agentRaw ? agentRaw[0]?.toUpperCase() + agentRaw.slice(1) : undefined
+      const agent =
+        agentRaw && agentRaw.toLowerCase() !== "build" ? agentRaw[0]?.toUpperCase() + agentRaw.slice(1) : undefined
       const modelId = lastAssistant?.model.id ?? ctx?.model?.id
 
       const completed = assistants.reduce<number | undefined>((latest, msg) => {
@@ -255,7 +256,7 @@ export function SessionMessageRail(props: {
                 <Show when={props.onFork}>
                   <Tooltip value={language.t("command.session.fork")} placement="top" gutter={4}>
                     <IconButton
-                      icon={<Icon name="branch" size="small" />}
+                      icon={<Icon name="split" size="small" />}
                       size="small"
                       variant="ghost-muted"
                       class="shrink-0"

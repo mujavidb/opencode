@@ -74,7 +74,7 @@ function modelLabel(
 
 function MessageActionButton(
   props: Pick<ComponentProps<"button">, "disabled" | "onMouseDown" | "onClick" | "aria-label"> & {
-    icon: "check" | "copy" | "reset" | "branch" | "arrow-down-to-line" | "outline-trash"
+    icon: "check" | "copy" | "reset" | "split" | "arrow-down-to-line" | "outline-trash"
     label: JSX.Element
   },
 ) {
@@ -271,7 +271,7 @@ export function CurrentUserMessageDisplay(props: {
   const timefmt = createMemo(() => new Intl.DateTimeFormat(i18n.locale(), { timeStyle: "short" }))
 
   const metaHead = createMemo(() => {
-    const agent = props.agent
+    const agent = props.agent && props.agent.toLowerCase() !== "build" ? props.agent : ""
 
     return [waiting() ? i18n.t("ui.message.pending") : "", agent ? agent[0]?.toUpperCase() + agent.slice(1) : "", model()]
       .filter(Boolean)
@@ -444,7 +444,7 @@ export function CurrentUserMessageDisplay(props: {
           </Show>
           <Show when={props.actions?.fork && !pending()}>
             <MessageActionButton
-              icon="branch"
+              icon="split"
               label={i18n.t("ui.message.forkMessage")}
               disabled={state.forking}
               onMouseDown={(event) => event.preventDefault()}
@@ -667,7 +667,7 @@ export function AssistantTextContent(props: {
   })
 
   const meta = createMemo(() => {
-    const agent = props.message.agent
+    const agent = props.message.agent && props.message.agent.toLowerCase() !== "build" ? props.message.agent : ""
 
     return [
       agent ? agent[0]?.toUpperCase() + agent.slice(1) : "",
@@ -715,7 +715,7 @@ export function AssistantTextContent(props: {
             />
             <Show when={props.onFork}>
               <MessageActionButton
-                icon="branch"
+                icon="split"
                 label={i18n.t("ui.message.forkMessage")}
                 disabled={state.forking}
                 onMouseDown={(event) => event.preventDefault()}
