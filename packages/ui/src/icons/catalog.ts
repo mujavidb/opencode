@@ -288,7 +288,7 @@ const icons = {
   },
   split: {
     viewBox: "0 0 16 16",
-    body: `<path d="M10.5 2.5H13.5V5.5M5.5 2.5H2.5V5.5M8 13.5V8.5C8 7.7 7.68 6.94 7.12 6.38L2.5 2.5M9.5 6.5L13.5 2.5" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"/>`,
+    body: `<path d="M2 8H5.5C7 8 7.5 4.5 9.5 4.5H13.5M5.5 8C7 8 7.5 11.5 9.5 11.5H13.5M11.5 2.5L13.5 4.5L11.5 6.5M11.5 9.5L13.5 11.5L11.5 13.5" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"/>`,
   },
 }
 
