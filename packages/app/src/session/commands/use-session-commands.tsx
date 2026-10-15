@@ -17,6 +17,10 @@ import type { SessionRevert } from "@/session/revert"
 import { Command } from "@opencode/gui-extensions/sdk"
 import { useExtensionHost } from "@/runtime/extension/host"
 import type { Region } from "@/runtime/extension/panels"
+import { useSessionOrganization } from "@/session/organization"
+import { notifySessionTabsRemoved } from "@/shell/titlebar/session-events"
+import { useServer } from "@/runtime/server/current"
+import { displayName } from "@opencode/ui/project-avatar"
 
 type SessionCommandSource = {
   identity: SessionModel["identity"]
@@ -59,6 +63,8 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
   const platform = usePlatform()
   const layout = useLayout()
   const host = useExtensionHost()
+  const org = useSessionOrganization()
+  const server = useServer()
 
   const openDialog = async <T,>(load: () => Promise<T>, show: (value: T) => void) => {
     const owner = actions.session.ownership.capture()
@@ -323,6 +329,114 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
       title: language.t("command.session.copyID"),
       disabled: !actions.session.identity.params.id,
       onSelect: copySessionID,
+    }),
+    sessionCommand({
+      id: "session.pin",
+      title: language.t(
+        actions.session.identity.params.id && org.isPinned(actions.session.identity.params.id)
+          ? "command.session.unpin"
+          : "command.session.pin",
+      ),
+      slash: "pin",
+      disabled: !actions.session.identity.params.id,
+      onSelect: () => {
+        const sessionID = actions.session.identity.params.id
+
+        if (sessionID) org.togglePin(sessionID)
+      },
+    }),
+    sessionCommand({
+      id: "session.archive",
+      title: language.t(
+        actions.session.data.info() && org.isArchived(actions.session.data.info()!)
+          ? "command.session.unarchive"
+          : "command.session.archive",
+      ),
+      slash: "archive",
+      disabled: !actions.session.identity.params.id,
+      onSelect: () => {
+        const sessionID = actions.session.identity.params.id
+        const info = actions.session.data.info()
+
+        if (!sessionID) return
+
+        if (info && org.isArchived(info)) {
+          org.unarchive(sessionID)
+          showToast({
+            variant: "success",
+            icon: "circle-check",
+            title: language.t("toast.session.unarchived.title"),
+          })
+
+          return
+        }
+
+        org.archive(sessionID)
+        notifySessionTabsRemoved({
+          server: server.key,
+          directory: info?.location.directory ?? "",
+          sessionIDs: [sessionID],
+        })
+        showToast({
+          icon: "archive",
+          title: language.t("toast.session.archived.title"),
+        })
+      },
+    }),
+    sessionCommand({
+      id: "session.assignProject",
+      title: language.t("command.session.assignProject"),
+      disabled: !actions.session.identity.params.id,
+      onSelect: () => {
+        const sessionID = actions.session.identity.params.id
+        const info = actions.session.data.info()
+
+        if (!sessionID) return
+        void openDialog(
+          () => import("@/session/organize-dialogs"),
+          (x) =>
+            dialog.show(() => (
+              <x.DialogAssignProject
+                projects={server.ctx.projects.list()}
+                currentDirectory={info ? org.effectiveDirectory(info) : undefined}
+                onSelectProject={(directory) => {
+                  org.assignProject(sessionID, directory)
+                  server.ctx.projects.open(directory)
+                  void server.ctx.sdk.api.session
+                    .move({ sessionID, directory })
+                    .then(() => server.ctx.data.session.sync(sessionID))
+                    .catch(() => {})
+
+                  const target =
+                    server.ctx.projects.list().find((item) => item.worktree === directory) ?? { worktree: directory }
+
+                  showToast({
+                    variant: "success",
+                    icon: "circle-check",
+                    title: language.t("toast.session.assignedProject.title", { project: displayName(target) }),
+                  })
+                }}
+              />
+            )),
+        )
+      },
+    }),
+    sessionCommand({
+      id: "session.moveToFolder",
+      title: language.t("command.session.moveToFolder"),
+      disabled: !actions.session.identity.params.id,
+      onSelect: () => {
+        const sessionID = actions.session.identity.params.id
+
+        if (!sessionID) return
+        void openDialog(
+          () => import("@/session/organize-dialogs"),
+          (x) =>
+            dialog.show(() => (
+              <x.DialogMoveToFolder sessionIDs={[sessionID]} currentFolderID={org.folderID(sessionID)} />
+            )),
+        )
+      },
     }),
   ]
 

@@ -4,7 +4,12 @@ import { ServerConnection, useServers } from "@/runtime/server/registry"
 import { useTabs } from "@/shell/tabs/tabs"
 import { toggleHomeProjectSelection } from "@/shell/layout/helpers"
 import { createEffect, createMemo, startTransition } from "solid-js"
+import { createStore } from "solid-js/store"
 import type { SessionInfo } from "@opencode/client/promise"
+import { displayName } from "@opencode/ui/project-avatar"
+import { useLanguage } from "@/runtime/i18n/language"
+import { showToast } from "@/shell/notifications/toast"
+import { useSessionOrganization, type SessionFilterMode } from "@/session/organization"
 import { pathKey } from "@/workspaces/path-key"
 import { addProjects } from "./projects/add"
 
@@ -13,7 +18,21 @@ export function createHomeController() {
   const global = useGlobal()
   const servers = useServers()
   const tabs = useTabs()
+  const language = useLanguage()
+  const org = useSessionOrganization()
   const selection = layout.home.selection
+
+  const [organizeFilter, setOrganizeFilter] = createStore<{
+    mode: SessionFilterMode
+    folderID: string | undefined
+    tag: string | undefined
+    draggingSessionIDs: string[]
+  }>({
+    mode: "active",
+    folderID: undefined,
+    tag: undefined,
+    draggingSessionIDs: [],
+  })
 
   const focusedServer = createMemo<ServerConnection.Any | undefined>(
     () => servers.visible.find((conn) => ServerConnection.key(conn) === selection().server) ?? servers.visible[0],
@@ -48,6 +67,32 @@ export function createHomeController() {
     if (!ctx || !id || ctx.sdk.connection.status() !== "connected") return
     // Selecting a project is the demand for its worktree inventory: the session filter spans its worktrees.
     void ctx.sync.worktrees.list(id).then(() => ctx.sync.worktrees.refresh(id))
+  })
+  createEffect(() => {
+    const ctx = focusedServerCtx()
+
+    if (!ctx) return
+    const opened = ctx.projects.list()
+    const closed = ctx.projects.closed()
+
+    if (opened.length > 0 || closed.length > 0) return
+    const serverProjects = ctx.sync.data.project
+
+    if (serverProjects.length === 0) return
+    const homeDir = pathKey(ctx.sync.data.path.home ?? "")
+
+    const candidates = serverProjects.flatMap((item) =>
+      item.id !== "global" &&
+      item.worktree &&
+      item.worktree !== "/" &&
+      !item.worktree.startsWith("/private/var/") &&
+      !item.worktree.startsWith("/var/folders/") &&
+      pathKey(item.worktree) !== homeDir
+        ? [item.worktree]
+        : [],
+    )
+
+    if (candidates.length > 0) addProjects(ctx, candidates)
   })
   createEffect(() => {
     // The project list is empty until the server store hydrates; clearing the restored
@@ -94,7 +139,67 @@ export function createHomeController() {
     })
   }
 
+  function assignSessionsToProject(conn: ServerConnection.Any, sessionIDs: readonly string[], directory: string) {
+    if (sessionIDs.length === 0) return
+    const ctx = global.ensureServerCtx(conn)
+    ctx.projects.open(directory)
+    org.assignProjectMany(sessionIDs, directory)
+
+    const targetProject =
+      ctx.projects.list().find((item) => pathKey(item.worktree) === pathKey(directory)) ??
+      ctx.projects.resolve({ worktree: directory, expanded: true })
+
+    const projectName = displayName(targetProject)
+
+    for (const sessionID of sessionIDs) {
+      const existing = ctx.data.session.get(sessionID)
+
+      if (existing) {
+        ctx.data.session.remember({
+          ...existing,
+          location: { ...existing.location, directory },
+        })
+      }
+
+      void ctx.sdk.api.session
+        .move({ sessionID, directory })
+        .then(() => ctx.data.session.sync(sessionID))
+        .catch(() => {})
+    }
+
+    showToast({
+      variant: "success",
+      icon: "circle-check",
+      title:
+        sessionIDs.length === 1
+          ? language.t("toast.session.assignedProject.title", { project: projectName })
+          : language.plural("toast.session.bulkAssignedProject", sessionIDs.length, { project: projectName }),
+    })
+  }
+
   return {
+    organize: {
+      org,
+      mode: () => organizeFilter.mode,
+      setMode: (mode: SessionFilterMode) => setOrganizeFilter("mode", mode),
+      folderID: () => organizeFilter.folderID,
+      setFolderID: (folderID: string | undefined) => {
+        setOrganizeFilter("folderID", (current) => (current === folderID ? undefined : folderID))
+
+        if (folderID && organizeFilter.mode === "archived") setOrganizeFilter("mode", "active")
+      },
+      clearFolder: () => setOrganizeFilter("folderID", undefined),
+      tag: () => organizeFilter.tag,
+      setTag: (tag: string | undefined) => {
+        setOrganizeFilter("tag", (current) => (current === tag ? undefined : tag))
+
+        if (tag && organizeFilter.mode === "archived") setOrganizeFilter("mode", "active")
+      },
+      clearTag: () => setOrganizeFilter("tag", undefined),
+      draggingSessionIDs: () => organizeFilter.draggingSessionIDs,
+      setDraggingSessionIDs: (ids: string[]) => setOrganizeFilter("draggingSessionIDs", ids),
+      assignSessionsToProject,
+    },
     selection: {
       value: selection,
       set: setSelection,

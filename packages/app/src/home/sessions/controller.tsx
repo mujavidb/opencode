@@ -24,6 +24,16 @@ import { fetchSessionExport, saveSessionExport, sessionExportFilename } from "@/
 import { usePlatform } from "@/runtime/platform/platform"
 import { sessionLabel, sessionTitle } from "@/session/title"
 import { showToast } from "@/shell/notifications/toast"
+import { useDirectoryPicker } from "@/workspaces/selection/picker"
+import { homeProjectDirectories } from "@/shell/layout/helpers"
+import {
+  DialogAssignProject,
+  DialogCreateFolder,
+  DialogCreateTag,
+  DialogMoveToFolder,
+} from "@/session/organize-dialogs"
+import type { OrganizeColor, SessionFilterMode, SessionFolder, SessionGroupBy } from "@/session/organization"
+import { createStore } from "solid-js/store"
 import { archiveHomeSession } from "./archive"
 import type { HomeController } from "../model"
 import { buildHomeSessionRecords, homeProjectForSession, homeSessionLocation, type HomeSessionRecord } from "./records"
@@ -34,7 +44,7 @@ export type { HomeSessionRecord } from "./records"
 const selectSessions = (sessions: SessionInfo[]) => () => sessions
 
 export type HomeSessionGroup = {
-  id: "today" | "yesterday" | "older"
+  id: string
   title: string
   sessions: HomeSessionRecord[]
 }
@@ -48,6 +58,16 @@ export function createHomeSessionsController(home: HomeController) {
   const language = useLanguage()
   const platform = usePlatform()
   const queryClient = useQueryClient()
+  const pickDirectory = useDirectoryPicker()
+  const org = home.organize.org
+
+  const [selectionState, setSelectionState] = createStore<{
+    active: boolean
+    selected: string[]
+  }>({
+    active: false,
+    selected: [],
+  })
 
   const projectDirectories = createMemo(() => {
     const selected = home.selection.value().directory
@@ -66,7 +86,10 @@ export function createHomeSessionsController(home: HomeController) {
       queryKey: ["home-sessions", conn] as const,
       enabled: !!ctx && ctx.sdk.connection.status() === "connected",
       queryFn: ctx
-        ? ({ signal }) => loadHomeSessionIndex((input, options) => ctx.sdk.api.session.list(input, options), signal)
+        ? ({ signal }) =>
+            loadHomeSessionIndex((input, options) => ctx.sdk.api.session.list(input, options), signal, {
+              includeArchived: true,
+            })
         : skipToken,
       retry: false,
       staleTime: 30_000,
@@ -84,24 +107,89 @@ export function createHomeSessionsController(home: HomeController) {
 
     return retainHomeSessions(
       ctx.data.session.apply(
-        mergeHomeSessionIndex(sessionLoad.isPending ? [] : (sessionLoad.data?.() ?? []), ctx.data.session.list()),
+        mergeHomeSessionIndex(sessionLoad.isPending ? [] : (sessionLoad.data?.() ?? []), ctx.data.session.list(), {
+          includeArchived: true,
+        }),
       ),
       HOME_SESSION_LIMIT,
       Date.now(),
     )
   })
 
-  const allRecords = createMemo(() =>
+  const projectRecords = createMemo(() =>
     buildHomeSessionRecords({
       sessions: indexedSessions,
       projectDirectories,
       projects: home.project.list,
       resolveProject: (session) => home.server.focusedContext()?.projects.forSession(session),
+      effectiveDirectory: (session) => org.effectiveDirectory(session),
     }),
   )
 
+  const folderAndTagFiltered = createMemo(() => {
+    const folderID = home.organize.folderID()
+    const tag = home.organize.tag()
+
+    return projectRecords().filter((record) => {
+      if (folderID && org.folderID(record.session.id) !== folderID) return false
+
+      if (tag && !org.tagsForSession(record.session.id).includes(tag)) return false
+
+      return true
+    })
+  })
+
+  const counts = createMemo(() => {
+    let active = 0
+    let pinned = 0
+    let archived = 0
+
+    for (const record of folderAndTagFiltered()) {
+      const isArch = org.isArchived(record.session)
+
+      if (isArch) {
+        archived++
+        continue
+      }
+
+      active++
+
+      if (org.isPinned(record.session.id)) pinned++
+    }
+
+    return { active, pinned, archived }
+  })
+
+  const allRecords = createMemo(() => {
+    const mode = home.organize.mode()
+
+    return folderAndTagFiltered().filter((record) => {
+      const archived = org.isArchived(record.session)
+
+      if (mode === "archived") return archived
+
+      if (archived) return false
+
+      if (mode === "pinned") return org.isPinned(record.session.id)
+
+      return true
+    })
+  })
+
   const records = createMemo(() => allRecords().slice(0, HOME_SESSION_LIMIT))
-  const groups = createMemo(() => groupSessions(records(), language))
+
+  const groups = createMemo(() =>
+    groupSessions({
+      records: records(),
+      language,
+      mode: home.organize.mode(),
+      groupBy: org.groupBy(),
+      isPinned: (id) => org.isPinned(id),
+      folderForSession: (id) => org.folderForSession(id),
+      folders: org.folders(),
+    }),
+  )
+
   const prefetched = new Set<string>()
 
   const location = (record: HomeSessionRecord) => {
@@ -297,6 +385,25 @@ export function createHomeSessionsController(home: HomeController) {
     )
   }
 
+  const chooseDirectoryForSessions = (sessionIDs: readonly string[]) => {
+    const conn = home.server.focused()
+
+    if (!conn || sessionIDs.length === 0) return
+    pickDirectory({
+      server: conn,
+      title: language.t("session.organize.assignProject"),
+      multiple: false,
+      onSelect: (result) => {
+        const dirs = homeProjectDirectories(result)
+        const dir = dirs[0]
+
+        if (!dir) return
+        home.project.add(conn, [dir])
+        home.organize.assignSessionsToProject(conn, sessionIDs, dir)
+      },
+    })
+  }
+
   return {
     copy: {
       language,
@@ -304,8 +411,212 @@ export function createHomeSessionsController(home: HomeController) {
     data: {
       records,
       groups,
+      counts,
       loading: () => sessionLoad.isPending,
       searchRecords: allRecords,
+    },
+    organize: {
+      mode: home.organize.mode,
+      setMode: (mode: SessionFilterMode) => {
+        home.organize.setMode(mode)
+        setSelectionState("selected", [])
+      },
+      groupBy: org.groupBy,
+      setGroupBy: (groupBy: SessionGroupBy) => org.setGroupBy(groupBy),
+      folderID: home.organize.folderID,
+      activeFolder: () => org.folder(home.organize.folderID()),
+      setFolderID: home.organize.setFolderID,
+      clearFolder: home.organize.clearFolder,
+      tag: home.organize.tag,
+      setTag: home.organize.setTag,
+      clearTag: home.organize.clearTag,
+      folders: org.folders,
+      allTags: org.allTags,
+      tagColor: (tag: string): OrganizeColor => org.tagColor(tag),
+      isArchived: (session: SessionInfo) => org.isArchived(session),
+      isPinned: (sessionID: string) => org.isPinned(sessionID),
+      folderForSession: (sessionID: string): SessionFolder | undefined => org.folderForSession(sessionID),
+      tagsForSession: (sessionID: string) => org.tagsForSession(sessionID),
+      projects: home.project.list,
+      togglePin: (session: SessionInfo) => {
+        org.togglePin(session.id)
+      },
+      assignProject: (session: SessionInfo, directory: string) => {
+        const conn = home.server.focused()
+
+        if (!conn) return
+        home.organize.assignSessionsToProject(conn, [session.id], directory)
+      },
+      chooseProjectDirectory: (session: SessionInfo) => {
+        chooseDirectoryForSessions([session.id])
+      },
+      openAssignProjectDialog: (session: SessionInfo) => {
+        void dialog.show(() => (
+          <DialogAssignProject
+            projects={home.project.list()}
+            currentDirectory={org.effectiveDirectory(session)}
+            onSelectProject={(directory) => {
+              const conn = home.server.focused()
+
+              if (conn) home.organize.assignSessionsToProject(conn, [session.id], directory)
+            }}
+            onChooseDirectory={() => chooseDirectoryForSessions([session.id])}
+          />
+        ))
+      },
+      assignFolder: (session: SessionInfo, folderID: string | undefined) => {
+        org.assignFolder(session.id, folderID)
+        const folder = org.folder(folderID)
+        showToast({
+          title: folder
+            ? language.t("toast.session.movedFolder.title", { folder: folder.name })
+            : language.t("toast.session.removedFolder.title"),
+        })
+      },
+      openCreateFolderDialog: (sessionIDs?: readonly string[]) => {
+        void dialog.show(() => <DialogCreateFolder sessionIDs={sessionIDs} />)
+      },
+      openMoveToFolderDialog: (session: SessionInfo) => {
+        void dialog.show(() => (
+          <DialogMoveToFolder sessionIDs={[session.id]} currentFolderID={org.folderID(session.id)} />
+        ))
+      },
+      toggleTag: (session: SessionInfo, tag: string) => {
+        org.toggleTag(session.id, tag)
+      },
+      clearTags: (session: SessionInfo) => {
+        org.clearTags(session.id)
+      },
+      openCreateTagDialog: (sessionIDs: readonly string[]) => {
+        void dialog.show(() => <DialogCreateTag sessionIDs={sessionIDs} />)
+      },
+      setDraggingSessions: (sessionID: string) => {
+        const selected = selectionState.selected
+        const ids = selectionState.active && selected.includes(sessionID) ? selected : [sessionID]
+        home.organize.setDraggingSessionIDs(ids)
+
+        return ids
+      },
+      clearDraggingSessions: () => home.organize.setDraggingSessionIDs([]),
+      selection: {
+        active: () => selectionState.active,
+        toggleMode: () => {
+          const next = !selectionState.active
+          setSelectionState({ active: next, selected: [] })
+        },
+        selected: () => selectionState.selected,
+        count: () => selectionState.selected.length,
+        isSelected: (sessionID: string) => selectionState.selected.includes(sessionID),
+        toggle: (sessionID: string) => {
+          setSelectionState("selected", (current) =>
+            current.includes(sessionID) ? current.filter((id) => id !== sessionID) : [...current, sessionID],
+          )
+        },
+        selectAll: () => {
+          const visibleIDs = records().map((record) => record.session.id)
+
+          const allSelected =
+            visibleIDs.length > 0 && visibleIDs.every((id) => selectionState.selected.includes(id))
+
+          setSelectionState("selected", allSelected ? [] : visibleIDs)
+        },
+        clear: () => setSelectionState("selected", []),
+        bulkPin: (pinned: boolean) => {
+          const ids = selectionState.selected
+
+          if (ids.length === 0) return
+          org.pinMany(ids, pinned)
+          setSelectionState("selected", [])
+        },
+        bulkAssignProject: (directory: string) => {
+          const conn = home.server.focused()
+          const ids = selectionState.selected
+
+          if (!conn || ids.length === 0) return
+          home.organize.assignSessionsToProject(conn, ids, directory)
+          setSelectionState("selected", [])
+        },
+        bulkChooseDirectory: () => {
+          const ids = [...selectionState.selected]
+
+          if (ids.length === 0) return
+          chooseDirectoryForSessions(ids)
+          setSelectionState("selected", [])
+        },
+        bulkAssignFolder: (folderID: string | undefined) => {
+          const ids = selectionState.selected
+
+          if (ids.length === 0) return
+          org.assignFolderMany(ids, folderID)
+          const folder = org.folder(folderID)
+          showToast({
+            title: folder
+              ? language.plural("toast.session.bulkMovedFolder", ids.length, { folder: folder.name })
+              : language.t("toast.session.removedFolder.title"),
+          })
+          setSelectionState("selected", [])
+        },
+        bulkCreateFolder: () => {
+          const ids = [...selectionState.selected]
+
+          if (ids.length === 0) return
+          void dialog.show(() => (
+            <DialogCreateFolder
+              sessionIDs={ids}
+              onCreated={() => setSelectionState("selected", [])}
+            />
+          ))
+        },
+        bulkToggleTag: (tag: string) => {
+          const ids = selectionState.selected
+
+          if (ids.length === 0) return
+          org.addTagMany(ids, tag)
+        },
+        bulkCreateTag: () => {
+          const ids = [...selectionState.selected]
+
+          if (ids.length === 0) return
+          void dialog.show(() => <DialogCreateTag sessionIDs={ids} />)
+        },
+        bulkArchive: () => {
+          const conn = home.server.focused()
+          const ids = [...selectionState.selected]
+
+          if (!conn || ids.length === 0) return
+          const restoring = home.organize.mode() === "archived"
+
+          if (restoring) {
+            org.unarchiveMany(ids)
+            showToast({
+              variant: "success",
+              icon: "circle-check",
+              title: language.plural("toast.session.bulkUnarchived", ids.length),
+            })
+            setSelectionState("selected", [])
+
+            return
+          }
+
+          org.archiveMany(ids)
+          const serverKey = ServerConnection.key(conn)
+
+          for (const record of records()) {
+            if (!ids.includes(record.session.id)) continue
+            notifySessionTabsRemoved({
+              server: serverKey,
+              directory: record.session.location.directory,
+              sessionIDs: [record.session.id],
+            })
+          }
+
+          showToast({
+            icon: "archive",
+            title: language.plural("toast.session.bulkArchived", ids.length),
+          })
+          setSelectionState("selected", [])
+        },
+      },
     },
     platform: {
       desktop: platform.platform === "desktop",
@@ -315,7 +626,7 @@ export function createHomeSessionsController(home: HomeController) {
       sync: syncLocations,
     },
     session: {
-      showProjectName: () => !home.project.selected(),
+      showProjectName: () => !home.project.selected() && org.groupBy() !== "project",
       server: () => home.selection.value().server,
       canCreate: () => !!home.project.newSession(),
       lookup: async (sessionID: string) => {
@@ -324,23 +635,25 @@ export function createHomeSessionsController(home: HomeController) {
         if (!ctx) return
         const result = await ctx.sdk.api.session.get({ sessionID })
 
-        if (result.time.archived) return
+        if (org.isArchived(result) && home.organize.mode() !== "archived") return
 
         return buildHomeSessionRecords({
           sessions: () => [result],
           projectDirectories,
           projects: home.project.list,
           resolveProject: ctx.projects.forSession,
+          effectiveDirectory: (session) => org.effectiveDirectory(session),
         })[0]
       },
       create: home.project.openNewSession,
       open: (session: SessionInfo, options?: OpenSessionOptions) => {
-        const project = homeProjectForSession(session, home.project.list())
+        const effective = org.effectiveSession(session)
+        const project = homeProjectForSession(effective, home.project.list())
         const conn = home.server.focused()
 
         if (!conn) return
         const connKey = ServerConnection.key(conn)
-        const directory = project?.worktree ?? session.location.directory
+        const directory = project?.worktree ?? effective.location.directory
         const ctx = home.server.focusedContext()
 
         if (!ctx) return
@@ -352,7 +665,7 @@ export function createHomeSessionsController(home: HomeController) {
           const tab = tabs.addSessionTab({ server: connKey, sessionId: session.id })
 
           if (!options?.background) tabs.select(tab)
-          ctx.data.session.remember(session)
+          ctx.data.session.remember(effective)
           ctx.projects.open(directory)
 
           if (!options?.background) ctx.projects.touch(directory)
@@ -363,12 +676,30 @@ export function createHomeSessionsController(home: HomeController) {
         const ctx = home.server.focusedContext()
 
         if (!conn || !ctx) return
+
+        if (org.isArchived(session)) {
+          org.unarchive(session.id)
+          showToast({
+            variant: "success",
+            icon: "circle-check",
+            title: language.t("toast.session.unarchived.title"),
+          })
+
+          return
+        }
+
         await archiveHomeSession({
           server: ServerConnection.key(conn),
           session,
-          // TODO: Restore archiving when the V2 client exposes a session archive API.
-          archive: async (_sessionID) => Promise.reject(new Error("Session archiving is unavailable")),
-          remove() {},
+          archive: async (sessionID) => {
+            org.archive(sessionID)
+          },
+          remove() {
+            showToast({
+              icon: "archive",
+              title: language.t("toast.session.archived.title"),
+            })
+          },
           onError: (cause) =>
             showToast({
               title: language.t("common.requestFailed"),
@@ -404,24 +735,98 @@ function localDay(date: Date) {
   return date.getFullYear() * 10_000 + date.getMonth() * 100 + date.getDate()
 }
 
-function groupSessions(records: HomeSessionRecord[], language: ReturnType<typeof useLanguage>): HomeSessionGroup[] {
+function groupSessions(input: {
+  records: HomeSessionRecord[]
+  language: ReturnType<typeof useLanguage>
+  mode: SessionFilterMode
+  groupBy: SessionGroupBy
+  isPinned: (sessionID: string) => boolean
+  folderForSession: (sessionID: string) => SessionFolder | undefined
+  folders: readonly SessionFolder[]
+}): HomeSessionGroup[] {
+  const { records, language, mode, groupBy, isPinned, folderForSession, folders } = input
+
+  if (records.length === 0) return []
+
+  if (groupBy === "project") {
+    const byProject = new Map<string, { title: string; sessions: HomeSessionRecord[] }>()
+
+    for (const record of records) {
+      const key = pathKey(record.project.worktree)
+      const existing = byProject.get(key)
+
+      if (existing) {
+        existing.sessions.push(record)
+        continue
+      }
+
+      byProject.set(key, { title: record.projectName, sessions: [record] })
+    }
+
+    return [...byProject.entries()].map(([key, value]) => ({
+      id: `project:${key}`,
+      title: value.title,
+      sessions: value.sessions,
+    }))
+  }
+
+  if (groupBy === "folder") {
+    const byFolder = new Map<string, HomeSessionRecord[]>()
+    const unfiled: HomeSessionRecord[] = []
+
+    for (const record of records) {
+      const folder = folderForSession(record.session.id)
+
+      if (!folder) {
+        unfiled.push(record)
+        continue
+      }
+
+      const list = byFolder.get(folder.id) ?? []
+      list.push(record)
+      byFolder.set(folder.id, list)
+    }
+
+    const result: HomeSessionGroup[] = folders.flatMap((folder) => {
+      const sessions = byFolder.get(folder.id)
+
+      return sessions && sessions.length > 0 ? [{ id: `folder:${folder.id}`, title: folder.name, sessions }] : []
+    })
+
+    if (unfiled.length > 0) {
+      result.push({ id: "folder:unfiled", title: language.t("home.sessions.group.unfiled"), sessions: unfiled })
+    }
+
+    return result
+  }
+
+  if (mode === "pinned") {
+    return [{ id: "pinned", title: language.t("home.sessions.group.pinned"), sessions: records }]
+  }
+
+  const pinnedSessions = mode === "active" ? records.filter((record) => isPinned(record.session.id)) : []
+  const unpinnedRecords = mode === "active" ? records.filter((record) => !isPinned(record.session.id)) : records
+
   const now = new Date()
   const today = localDay(now)
   const yesterday = localDay(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1))
   const day = (record: HomeSessionRecord) => localDay(new Date(record.session.time.updated ?? record.session.time.created))
-  const todaySessions = records.filter((record) => day(record) === today)
-  const yesterdaySessions = records.filter((record) => day(record) === yesterday)
-  const olderSessions = records.filter((record) => day(record) !== today && day(record) !== yesterday)
+  const todaySessions = unpinnedRecords.filter((record) => day(record) === today)
+  const yesterdaySessions = unpinnedRecords.filter((record) => day(record) === yesterday)
+  const olderSessions = unpinnedRecords.filter((record) => day(record) !== today && day(record) !== yesterday)
 
   const olderTitle =
-    todaySessions.length === 0 && yesterdaySessions.length === 0
-      ? language.t("sidebar.project.recentSessions")
+    todaySessions.length === 0 && yesterdaySessions.length === 0 && pinnedSessions.length === 0
+      ? mode === "archived"
+        ? language.t("home.sessions.group.archived")
+        : language.t("sidebar.project.recentSessions")
       : language.t("home.sessions.group.older")
 
   return [
-    { id: "today" as const, title: language.t("home.sessions.group.today"), sessions: todaySessions },
-    { id: "yesterday" as const, title: language.t("home.sessions.group.yesterday"), sessions: yesterdaySessions },
-    { id: "older" as const, title: olderTitle, sessions: olderSessions },
+    { id: "pinned", title: language.t("home.sessions.group.pinned"), sessions: pinnedSessions },
+    { id: "today", title: language.t("home.sessions.group.today"), sessions: todaySessions },
+    { id: "yesterday", title: language.t("home.sessions.group.yesterday"), sessions: yesterdaySessions },
+    { id: "older", title: olderTitle, sessions: olderSessions },
   ].filter((group) => group.sessions.length > 0)
 }
 

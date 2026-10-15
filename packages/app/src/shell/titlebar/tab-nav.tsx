@@ -1,17 +1,27 @@
-import { createEffect, createMemo, createSignal, onCleanup, Show, type Ref } from "solid-js"
+import { createEffect, createMemo, createSignal, For, onCleanup, Show, type Ref } from "solid-js"
 import { createStore } from "solid-js/store"
 import { Predicate } from "effect"
 import { makeEventListener } from "@solid-primitives/event-listener"
 import { createResizeObserver } from "@solid-primitives/resize-observer"
 import { createMutation } from "@tanstack/solid-query"
+import { useDialog } from "@opencode/ui/context/dialog"
 import { IconButton } from "@opencode/ui/icon-button"
 import { Icon } from "@opencode/ui/icon"
 import { Menu } from "@opencode/ui/menu"
+import {
+  displayName,
+  getProjectAvatarSource,
+  getProjectAvatarVariant,
+  ProjectAvatar,
+} from "@opencode/ui/project-avatar"
 import { useServerCtx } from "@/runtime/server/runtime"
 import { useLanguage } from "@/runtime/i18n/language"
 import { ServerConnection, serverName, useServers } from "@/runtime/server/registry"
-import { displayName } from "@opencode/ui/project-avatar"
+import { DialogCreateFolder } from "@/session/organize-dialogs"
+import { ORGANIZE_COLOR_STYLES, useSessionOrganization } from "@/session/organization"
 import { SessionTabAvatar } from "@/shell/layout/session-tab-avatar"
+import { showToast } from "@/shell/notifications/toast"
+import { pathKey } from "@/workspaces/path-key"
 import { SessionProgressIndicatorV2 } from "@opencode/session-ui/v2/session-progress-indicator-v2"
 import type { SessionInfo } from "@opencode/client/promise"
 import { sessionTabTitle } from "./tab-title"
@@ -39,6 +49,8 @@ export function TabNavItem(props: {
   orientation?: "horizontal" | "vertical"
 }) {
   const language = useLanguage()
+  const dialog = useDialog()
+  const org = useSessionOrganization()
   const [menu, setMenu] = createStore({ open: false, rename: false })
   const [editing, setEditing] = createSignal(false)
   const [titleOverflowing, setTitleOverflowing] = createSignal(false)
@@ -399,6 +411,112 @@ export function TabNavItem(props: {
             openRename()
           }}
         >
+          <Show when={props.session}>
+            {(session) => (
+              <>
+                <Menu.Item onSelect={() => org.togglePin(session().id)}>
+                  {language.t(org.isPinned(session().id) ? "session.organize.unpin" : "session.organize.pin")}
+                </Menu.Item>
+                <Menu.Sub>
+                  <Menu.SubTrigger>{language.t("session.organize.assignProject")}</Menu.SubTrigger>
+                  <Menu.Portal>
+                    <Menu.SubContent class="max-h-72 overflow-y-auto">
+                      <For each={serverCtx()?.projects.list() ?? []}>
+                        {(item) => {
+                          const current = () =>
+                            pathKey(item.worktree) === pathKey(org.effectiveDirectory(session()))
+
+                          return (
+                            <Menu.CheckboxItem
+                              checked={current()}
+                              onChange={() => {
+                                org.assignProject(session().id, item.worktree)
+                                const ctx = serverCtx()
+
+                                if (ctx) {
+                                  ctx.projects.open(item.worktree)
+                                  void ctx.sdk.api.session
+                                    .move({ sessionID: session().id, directory: item.worktree })
+                                    .then(() => ctx.data.session.sync(session().id))
+                                    .catch(() => {})
+                                }
+
+                                showToast({
+                                  variant: "success",
+                                  icon: "circle-check",
+                                  title: language.t("toast.session.assignedProject.title", {
+                                    project: displayName(item),
+                                  }),
+                                })
+                              }}
+                            >
+                              <span class="flex items-center gap-2">
+                                <ProjectAvatar
+                                  fallback={displayName(item)}
+                                  src={getProjectAvatarSource(item.id, item.icon)}
+                                  variant={getProjectAvatarVariant(item.icon?.color)}
+                                />
+                                <span class="max-w-44 truncate">{displayName(item)}</span>
+                              </span>
+                            </Menu.CheckboxItem>
+                          )
+                        }}
+                      </For>
+                    </Menu.SubContent>
+                  </Menu.Portal>
+                </Menu.Sub>
+                <Menu.Sub>
+                  <Menu.SubTrigger>{language.t("session.organize.moveToFolder")}</Menu.SubTrigger>
+                  <Menu.Portal>
+                    <Menu.SubContent class="max-h-72 overflow-y-auto">
+                      <For each={org.folders()}>
+                        {(folder) => (
+                          <Menu.CheckboxItem
+                            checked={org.folderID(session().id) === folder.id}
+                            onChange={() =>
+                              org.assignFolder(
+                                session().id,
+                                org.folderID(session().id) === folder.id ? undefined : folder.id,
+                              )
+                            }
+                          >
+                            <span class="flex items-center gap-2">
+                              <Icon name="folder" size="small" class={ORGANIZE_COLOR_STYLES[folder.color].text} />
+                              <span class="max-w-44 truncate">{folder.name}</span>
+                            </span>
+                          </Menu.CheckboxItem>
+                        )}
+                      </For>
+                      <Show when={org.folderID(session().id)}>
+                        <Menu.Item onSelect={() => org.assignFolder(session().id, undefined)}>
+                          {language.t("session.organize.removeFromFolder")}
+                        </Menu.Item>
+                      </Show>
+                      <Show when={org.folders().length > 0 || org.folderID(session().id)}>
+                        <Menu.Separator />
+                      </Show>
+                      <Menu.Item onSelect={() => void dialog.show(() => <DialogCreateFolder sessionIDs={[session().id]} />)}>
+                        {language.t("session.organize.newFolder")}
+                      </Menu.Item>
+                    </Menu.SubContent>
+                  </Menu.Portal>
+                </Menu.Sub>
+                <Menu.Item
+                  onSelect={() => {
+                    org.archive(session().id)
+                    props.onClose()
+                    showToast({
+                      icon: "archive",
+                      title: language.t("toast.session.archived.title"),
+                    })
+                  }}
+                >
+                  {language.t("session.organize.archive")}
+                </Menu.Item>
+                <Menu.Separator />
+              </>
+            )}
+          </Show>
           <Menu.Item disabled={!props.session || rename.isPending} onSelect={() => setMenu("rename", true)}>
             {language.t("common.rename")}
           </Menu.Item>

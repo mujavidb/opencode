@@ -16,6 +16,7 @@
     "typecheck:e2e": "tsgo -p e2e/tsconfig.json",
     "start": "vite",
     "dev": "vite",
+    "dev:live": "sh -c 'VITE_OPENCODE_SERVER_MODE=origin OPENCODE_LIVE_SERVER_URL=\"$(opencode service status)\" OPENCODE_LIVE_SERVER_PASSWORD=\"$(opencode service get password)\" exec vite --port 4444 \"$@\"' --",
     "build": "vite build",
     "serve": "vite preview",
     "test": "bun run test:unit && bun run test:browser",

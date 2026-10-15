@@ -18,6 +18,7 @@ import { TabsProvider } from "@/shell/tabs/tabs"
 import { ErrorPage } from "@/shell/errors/error"
 import { AppRoutes, File, preloadRoute } from "@/shell/routes/routes"
 import { ExtensionRoot } from "@/runtime/extension/root"
+import { SessionOrganizationProvider } from "@/session/organization"
 
 export { preloadRoute }
 
@@ -70,11 +71,13 @@ export function AppBaseProviders(
               }}
             >
               <QueryProvider>
-                <DialogProvider>
-                  <ExtensionRoot>
-                    <FileComponentProvider component={File}>{props.children}</FileComponentProvider>
-                  </ExtensionRoot>
-                </DialogProvider>
+                <SessionOrganizationProvider>
+                  <DialogProvider>
+                    <ExtensionRoot>
+                      <FileComponentProvider component={File}>{props.children}</FileComponentProvider>
+                    </ExtensionRoot>
+                  </DialogProvider>
+                </SessionOrganizationProvider>
               </QueryProvider>
             </ErrorBoundary>
           </UiI18nBridge>

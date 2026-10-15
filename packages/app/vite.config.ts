@@ -22,6 +22,12 @@ const sentry =
       })
     : false
 
+const liveTarget = process.env.OPENCODE_LIVE_SERVER_URL
+const livePassword = process.env.OPENCODE_LIVE_SERVER_PASSWORD
+const liveAuthHeader = livePassword
+  ? `Basic ${Buffer.from(`opencode:${livePassword}`).toString("base64")}`
+  : undefined
+
 export default defineConfig({
   plugins: [
     desktopPlugin,
@@ -33,6 +39,21 @@ export default defineConfig({
     host: "0.0.0.0",
     allowedHosts: true,
     port: 3000,
+    proxy: liveTarget
+      ? {
+          "/api": {
+            target: liveTarget,
+            changeOrigin: true,
+            ws: true,
+            headers: liveAuthHeader ? { Authorization: liveAuthHeader } : undefined,
+          },
+          "/auth": {
+            target: liveTarget,
+            changeOrigin: true,
+            headers: liveAuthHeader ? { Authorization: liveAuthHeader } : undefined,
+          },
+        }
+      : undefined,
   },
   build: {
     ...(process.env.VITE_OPENCODE_TEST_FIXTURES === "1"

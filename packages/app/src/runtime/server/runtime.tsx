@@ -20,6 +20,7 @@ import { useSettings } from "@/settings/model"
 import { timelinePreset } from "@opencode/session-ui/timeline/detail"
 import type { SessionInfo } from "@opencode/client/promise"
 import { resolveProjectForSession, resolveSessionDetailsProject } from "@/shell/layout/helpers"
+import { useSessionOrganization } from "@/session/organization"
 
 export const { use: useGlobal, provider: GlobalProvider } = createSimpleContext({
   name: "Global",
@@ -222,10 +223,13 @@ function createServerController(
     return base
   }
 
+  const org = useSessionOrganization()
+
   const projectsList = createMemo(() => projects.list().map(enrich))
 
   const forSession = (session: SessionInfo) => {
-    const project = resolveProjectForSession(session, projectsList(), sync.data.project)
+    const effective = org.effectiveSession(session)
+    const project = resolveProjectForSession(effective, projectsList(), sync.data.project)
 
     if (!project) return
 
@@ -233,7 +237,7 @@ function createServerController(
   }
 
   const detailsForSession = (session: SessionInfo) =>
-    resolveSessionDetailsProject(session, projectsList(), sync.data.project)
+    resolveSessionDetailsProject(org.effectiveSession(session), projectsList(), sync.data.project)
 
   const recentlyClosedList = createMemo(() => {
     const known = new Set(sync.data.project.map((project) => pathKey(project.worktree)))

@@ -20,21 +20,32 @@ export function buildHomeSessionRecords(input: {
   projectDirectories: () => string[] | undefined
   projects: () => LocalProject[]
   resolveProject?: (session: SessionInfo) => LocalProject | undefined
+  effectiveDirectory?: (session: SessionInfo) => string
 }) {
   const selected = input.projectDirectories()
   const directories = selected ? new Set(selected.map(pathKey)) : undefined
 
+  const dirOf = (session: SessionInfo) =>
+    input.effectiveDirectory ? input.effectiveDirectory(session) : session.location.directory
+
   const sessions = directories
-    ? input.sessions().filter((session) => directories.has(pathKey(session.location.directory)))
+    ? input.sessions().filter((session) => directories.has(pathKey(dirOf(session))))
     : input.sessions()
 
   return [...new Map(sessions.map((session) => [session.id, session] as const)).values()]
     .sort(compareSessionTime)
     .map((session) => {
-      const project = input.resolveProject?.(session) ??
-        homeProjectForSession(session, input.projects()) ?? {
+      const directory = dirOf(session)
+
+      const effective =
+        directory === session.location.directory
+          ? session
+          : { ...session, location: { ...session.location, directory } }
+
+      const project = input.resolveProject?.(effective) ??
+        homeProjectForSession(effective, input.projects()) ?? {
           id: session.projectID,
-          worktree: session.location.directory,
+          worktree: directory,
           expanded: false,
         }
 

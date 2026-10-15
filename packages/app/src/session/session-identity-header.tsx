@@ -25,6 +25,10 @@ import { pathKey } from "@/workspaces/path-key"
 import { isProjectDirectory, isWorkspaceDirectory } from "@/workspaces/paths"
 import { sessionHref } from "@/shell/routes/session"
 import { showToast } from "@/shell/notifications/toast"
+import { notifySessionTabsRemoved } from "@/shell/titlebar/session-events"
+import { useDialog } from "@opencode/ui/context/dialog"
+import { DialogCreateFolder } from "./organize-dialogs"
+import { ORGANIZE_COLOR_STYLES, useSessionOrganization } from "./organization"
 import { sessionTitle } from "./title"
 import { SessionWorkingIndicator } from "./header/session-working-indicator"
 import "./session-identity-header.css"
@@ -46,6 +50,8 @@ export function SessionTitleHeader(props: ParentProps) {
 }
 
 export function SessionProjectMenu(props: {
+  sessionID?: string
+  session?: SessionInfo
   project?: Omit<LocalProject, "expanded">
   directory?: string
   workspace: boolean
@@ -56,6 +62,8 @@ export function SessionProjectMenu(props: {
   const layout = useLayout()
   const settingsSurface = useSettingsSurface()
   const navigate = useNavigate()
+  const dialog = useDialog()
+  const org = useSessionOrganization()
 
   const [state, setState] = createStore({
     open: false,
@@ -199,6 +207,109 @@ export function SessionProjectMenu(props: {
             </Menu.Item>
           </Tooltip>
           <Menu.Separator />
+          <Show when={props.sessionID}>
+            {(id) => (
+              <>
+                <Menu.Sub>
+                  <Menu.SubTrigger>{language.t("session.organize.assignProject")}</Menu.SubTrigger>
+                  <Menu.Portal>
+                    <Menu.SubContent class="max-h-72 overflow-y-auto">
+                      <For each={server.ctx.projects.list()}>
+                        {(item) => {
+                          const current = () =>
+                            !!props.directory && pathKey(item.worktree) === pathKey(props.directory)
+
+                          return (
+                            <Menu.CheckboxItem
+                              checked={current()}
+                              onChange={() => {
+                                org.assignProject(id(), item.worktree)
+                                server.ctx.projects.open(item.worktree)
+                                void server.ctx.sdk.api.session
+                                  .move({ sessionID: id(), directory: item.worktree })
+                                  .then(() => server.ctx.data.session.sync(id()))
+                                  .catch(() => {})
+                                showToast({
+                                  variant: "success",
+                                  icon: "circle-check",
+                                  title: language.t("toast.session.assignedProject.title", {
+                                    project: displayName(item),
+                                  }),
+                                })
+                              }}
+                            >
+                              <span class="flex items-center gap-2">
+                                <ProjectAvatar
+                                  fallback={displayName(item)}
+                                  src={getProjectAvatarSource(item.id, item.icon)}
+                                  variant={getProjectAvatarVariant(item.icon?.color)}
+                                />
+                                <span class="max-w-44 truncate">{displayName(item)}</span>
+                              </span>
+                            </Menu.CheckboxItem>
+                          )
+                        }}
+                      </For>
+                    </Menu.SubContent>
+                  </Menu.Portal>
+                </Menu.Sub>
+                <Menu.Sub>
+                  <Menu.SubTrigger>{language.t("session.organize.moveToFolder")}</Menu.SubTrigger>
+                  <Menu.Portal>
+                    <Menu.SubContent class="max-h-72 overflow-y-auto">
+                      <For each={org.folders()}>
+                        {(folder) => (
+                          <Menu.CheckboxItem
+                            checked={org.folderID(id()) === folder.id}
+                            onChange={() =>
+                              org.assignFolder(id(), org.folderID(id()) === folder.id ? undefined : folder.id)
+                            }
+                          >
+                            <span class="flex items-center gap-2">
+                              <Icon name="folder" size="small" class={ORGANIZE_COLOR_STYLES[folder.color].text} />
+                              <span class="max-w-44 truncate">{folder.name}</span>
+                            </span>
+                          </Menu.CheckboxItem>
+                        )}
+                      </For>
+                      <Show when={org.folderID(id())}>
+                        <Menu.Item onSelect={() => org.assignFolder(id(), undefined)}>
+                          {language.t("session.organize.removeFromFolder")}
+                        </Menu.Item>
+                      </Show>
+                      <Show when={org.folders().length > 0 || org.folderID(id())}>
+                        <Menu.Separator />
+                      </Show>
+                      <Menu.Item onSelect={() => void dialog.show(() => <DialogCreateFolder sessionIDs={[id()]} />)}>
+                        {language.t("session.organize.newFolder")}
+                      </Menu.Item>
+                    </Menu.SubContent>
+                  </Menu.Portal>
+                </Menu.Sub>
+                <Menu.Item onSelect={() => org.togglePin(id())}>
+                  {language.t(org.isPinned(id()) ? "session.organize.unpin" : "session.organize.pin")}
+                </Menu.Item>
+                <Menu.Item
+                  onSelect={() => {
+                    org.archive(id())
+                    notifySessionTabsRemoved({
+                      server: server.key,
+                      directory: props.directory ?? "",
+                      sessionIDs: [id()],
+                    })
+                    showToast({
+                      icon: "archive",
+                      title: language.t("toast.session.archived.title"),
+                    })
+                    navigate("/")
+                  }}
+                >
+                  {language.t("session.organize.archive")}
+                </Menu.Item>
+                <Menu.Separator />
+              </>
+            )}
+          </Show>
           <Menu.Item disabled={!props.project} onSelect={openProjectSettings}>
             <Icon name="settings-gear" class="text-v2-icon-icon-muted" />
             {language.t("project.settings.title")}
@@ -351,8 +462,13 @@ export function SessionIdentityHeader(props: ParentProps<{ sessionID: string; se
     )
   })
 
+  const org = useSessionOrganization()
+
   const directory = createMemo(
-    () => props.session?.location.directory ?? pending()?.draft.directory ?? info()?.directory,
+    () =>
+      (props.session ? org.effectiveDirectory(props.session) : undefined) ??
+      pending()?.draft.directory ??
+      info()?.directory,
   )
 
   const title = createMemo(() =>
@@ -384,7 +500,13 @@ export function SessionIdentityHeader(props: ParentProps<{ sessionID: string; se
         <div class="flex h-12 w-full items-center justify-between gap-2">
           <div class="flex min-w-0 flex-1 items-center gap-1">
             <div class="flex min-w-0 w-full flex-1 items-center gap-0.5">
-              <SessionProjectMenu project={project()} directory={directory()} workspace={workspaceSession()} />
+              <SessionProjectMenu
+                sessionID={props.sessionID}
+                session={props.session}
+                project={project()}
+                directory={directory()}
+                workspace={workspaceSession()}
+              />
               <Show when={parentID()}>
                 {(id) => (
                   <SessionAncestorTrail

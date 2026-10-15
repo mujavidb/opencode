@@ -9,6 +9,7 @@ import { HomeServersSchema } from "@/home/projects/controller"
 import { ModelProvidersSchema } from "@/settings/models/models"
 import { NotificationStore, type Notification } from "@/shell/notifications/notification"
 import { IconState, ProjectState, VcsState } from "@/runtime/server/persistence"
+import { initialSessionOrganization, SessionOrganizationSchema } from "@/session/organization"
 
 function stored<S extends Schema.ConstraintCodec<object, unknown>>(
   name: string,
@@ -106,6 +107,24 @@ describe("persisted consumer schemas", () => {
       [{ value: null }, { value: undefined }],
       [{ value: "" }, { value: "" }],
       [{ value: "data:image/png;base64,abc" }, { value: "data:image/png;base64,abc" }],
+    ]),
+    stored("session organization", SessionOrganizationSchema, initialSessionOrganization(), [
+      [{}, initialSessionOrganization()],
+      [{ groupBy: "invalid", folders: "bad" }, initialSessionOrganization()],
+      [
+        {
+          groupBy: "project",
+          folders: [{ id: "fld_1", name: "Sprint", color: "purple", createdAt: 10 }],
+          sessions: { ses_1: { archivedAt: 100, pinnedAt: 50, folderID: "fld_1", projectDirectory: "/repo/a", tags: ["wip"] } },
+          tagColors: { wip: "orange" },
+        },
+        {
+          groupBy: "project",
+          folders: [{ id: "fld_1", name: "Sprint", color: "purple", createdAt: 10 }],
+          sessions: { ses_1: { archivedAt: 100, pinnedAt: 50, folderID: "fld_1", projectDirectory: "/repo/a", tags: ["wip"] } },
+          tagColors: { wip: "orange" },
+        },
+      ],
     ]),
   ])("$name defaults missing or invalid values and round-trips valid ones", (row) => {
     row.cases.forEach(([input, expected]) => {

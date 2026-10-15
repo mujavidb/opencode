@@ -48,6 +48,8 @@ export function createWebPlatform(version: string) {
 function getCurrentServerUrl() {
   if (import.meta.env.VITE_OPENCODE_SERVER_MODE === "none") return undefined
 
+  if (import.meta.env.VITE_OPENCODE_SERVER_MODE === "origin") return location.origin
+
   if (import.meta.env.DEV) {
     const loopback =
       location.hostname === "localhost" || location.hostname === "[::1]" || location.hostname.startsWith("127.")
