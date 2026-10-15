@@ -13,7 +13,11 @@ await $`bun ./scripts/copy-icons.ts ${channel}`
 
 await $`bun ./scripts/copy-metainfo.ts ${channel}`
 
-if (channel === "dev") await downloadCliToResources()
+if (channel === "dev") {
+  const existing = Bun.file("resources/opencode-cli")
+
+  if (!(await existing.exists())) await downloadCliToResources()
+}
 
 if ((channel === "beta" || channel === "prod") && Bun.env.OPENCODE_CLI_DIST) {
   await copyBuiltCliToResources(Bun.env.OPENCODE_CLI_DIST)

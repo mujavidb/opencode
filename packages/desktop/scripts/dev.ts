@@ -10,13 +10,13 @@ type ServerSource = { type: "build" } | { type: "download"; version: string }
 type DevOptions = { server: ServerSource; electron: string[] }
 
 async function main() {
-  process.env.OPENCODE_CHANNEL = "local"
-  process.env.OPENCODE_VERSION = `2.0.0-local-${Date.now()}`
-  process.env.OPENCODE_DISABLE_CHANNEL_DB = "0"
+  process.env.OPENCODE_CHANNEL = "dev"
+  process.env.OPENCODE_VERSION = "2.0.29"
+  process.env.OPENCODE_DISABLE_CHANNEL_DB = "1"
+  process.env.OPENCODE_DESKTOP_REMOTE_DEBUGGING_PORT = process.env.OPENCODE_DESKTOP_REMOTE_DEBUGGING_PORT ?? "9229"
   const options = selectOptions()
 
-  if (options.server.type === "build") process.env.OPENCODE_DESKTOP_SERVER_CHANNEL = "local"
-  process.env.OPENCODE_DESKTOP_ISOLATED_SERVER = "1"
+  process.env.OPENCODE_DESKTOP_ISOLATED_SERVER = "0"
   await prepareDesktop()
   await prepareServer(options.server)
   await startDesktop(options.electron)
@@ -52,6 +52,10 @@ function selectOptions(): DevOptions {
 async function prepareServer(source: ServerSource) {
   if (source.type === "download")
     return downloadCliToResources(source.version, windowsify("resources/opencode-cli-dev"))
+
+  const existing = Bun.file(join(import.meta.dirname, "../resources", windowsify("opencode-cli")))
+
+  if (await existing.exists()) return
   buildWebUi()
   process.env.OPENCODE_DESKTOP_CLI_DEV = join(import.meta.dirname, "../../cli")
 
