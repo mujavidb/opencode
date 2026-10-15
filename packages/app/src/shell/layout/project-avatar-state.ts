@@ -3,6 +3,7 @@ import { useGlobal, useServerCtx } from "@/runtime/server/runtime"
 import { sessionPermissionRequest, sessionFormRequest } from "@/session/requests/session-request-tree"
 import { ServerConnection } from "@/runtime/server/registry"
 import { useSettings } from "@/settings/model"
+import { useSessionOrganization } from "@/session/organization"
 
 export function useSessionTabAvatarState(
   server: Accessor<ServerConnection.Key>,
@@ -11,6 +12,7 @@ export function useSessionTabAvatarState(
 ) {
   const global = useGlobal()
   const settings = useSettings()
+  const org = useSessionOrganization()
   const connection = createMemo(() => global.servers.list().find((item) => ServerConnection.key(item) === server()))
   const serverCtx = useServerCtx(connection)
 
@@ -49,7 +51,10 @@ export function useSessionTabAvatarState(
   const needsAttention = createMemo(() => hasPermissions() || hasForms())
 
   const unread = createMemo(
-    () => needsAttention() || (serverCtx()?.notification.session.unseenCount(sessionId()) ?? 0) > 0,
+    () =>
+      org.isUnread(sessionId()) ||
+      needsAttention() ||
+      (serverCtx()?.notification.session.unseenCount(sessionId()) ?? 0) > 0,
   )
 
   const loading = createMemo(() => {

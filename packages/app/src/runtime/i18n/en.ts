@@ -721,6 +721,8 @@ export const dict = {
   "sidebar.projects.delete": "Delete project",
   "sidebar.projects.assign": "Assign to project",
   "sidebar.projects.unassign": "Remove from project",
+  "sidebar.session.markUnread": "Mark as unread",
+  "sidebar.session.markRead": "Mark as read",
   "sidebar.chats": "Chats",
   "sidebar.archived": "Archived",
   "sidebar.archived.empty": "No archived chats",

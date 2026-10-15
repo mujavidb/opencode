@@ -26,6 +26,7 @@ export type SessionFolder = typeof SessionFolderSchema.Type
 export const SessionOrgEntrySchema = Persistence.struct({
   archivedAt: Persistence.optional(Schema.Finite),
   pinnedAt: Persistence.optional(Schema.Finite),
+  unreadAt: Persistence.optional(Schema.Finite),
   folderID: Persistence.optional(Schema.String),
   projectDirectory: Persistence.optional(Schema.String),
   tags: Persistence.optional(Persistence.array(Schema.String)),
@@ -261,6 +262,27 @@ function createSessionOrganizationController(persistedStore?: ReturnType<typeof 
     },
     isPinned(sessionID: string) {
       return isSessionPinned(store, sessionID)
+    },
+    isUnread(sessionID: string) {
+      return (store.sessions[sessionID]?.unreadAt ?? 0) > 0
+    },
+    markUnread(sessionID: string) {
+      const now = Date.now()
+      setStore(
+        produce((draft) => {
+          ensureEntry(draft, sessionID).unreadAt = now
+        }),
+      )
+    },
+    markRead(sessionID: string) {
+      if (!store.sessions[sessionID]?.unreadAt) return
+      setStore(
+        produce((draft) => {
+          const entry = draft.sessions[sessionID]
+
+          if (entry) delete entry.unreadAt
+        }),
+      )
     },
     pinnedAt(sessionID: string) {
       return store.sessions[sessionID]?.pinnedAt

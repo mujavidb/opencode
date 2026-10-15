@@ -94,6 +94,14 @@ export function TabNavItem(props: {
   const servers = useServers()
   const serverCtx = useServerCtx(() => servers.list.find((item) => ServerConnection.key(item) === props.server))
 
+  const isUnread = createMemo(() => {
+    const id = chatID()
+
+    if (!id) return false
+
+    return org.isUnread(id) || (serverCtx()?.notification.session.unseenCount(id) ?? 0) > 0
+  })
+
   const project = createMemo(() => {
     const session = props.session
 
@@ -283,6 +291,7 @@ export function TabNavItem(props: {
       class="group relative flex h-7 w-full min-w-0 select-none flex-row items-center gap-1.5 overflow-hidden whitespace-nowrap rounded-[6px] px-1.5 [container-type:inline-size]"
       classList={{ invisible: props.hidden }}
       data-active={props.active}
+      data-unread={isUnread() ? "true" : undefined}
       data-dragging={props.dragging}
       data-state={props.active || props.pressed ? "pressed" : undefined}
       onMouseDown={(event) => {
@@ -318,6 +327,13 @@ export function TabNavItem(props: {
           if (editing()) return
 
           if (props.suppressNavigation) return
+          const id = chatID()
+
+          if (id) {
+            org.markRead(id)
+            serverCtx()?.notification.session.markViewed(id)
+          }
+
           props.onNavigate()
         }}
         onClick={(event) => {
@@ -329,9 +345,16 @@ export function TabNavItem(props: {
           if (editing()) return
 
           if (props.suppressNavigation) return
+          const id = chatID()
+
+          if (id) {
+            org.markRead(id)
+            serverCtx()?.notification.session.markViewed(id)
+          }
+
           props.onNavigate()
         }}
-        class="flex h-full min-w-0 flex-1 flex-row items-center gap-1.5 text-[13px] font-medium text-v2-text-text-faint group-data-[active='true']:text-v2-text-text-base group-data-[editing='true']:text-v2-text-text-base [-webkit-user-drag:none]"
+        class="flex h-full min-w-0 flex-1 flex-row items-center gap-1.5 text-[13px] font-medium text-v2-text-text-faint group-data-[unread='true']:text-v2-text-text-base group-data-[active='true']:text-v2-text-text-base group-data-[editing='true']:text-v2-text-text-base [-webkit-user-drag:none]"
       >
         <span data-slot="project-avatar-slot" class="flex size-4 shrink-0 items-center justify-center">
           <Show
@@ -509,6 +532,18 @@ export function TabNavItem(props: {
                     </Menu.SubContent>
                   </Menu.Portal>
                 </Menu.Sub>
+                <Menu.Item
+                  onSelect={() => {
+                    if (isUnread()) {
+                      org.markRead(id())
+                      serverCtx()?.notification.session.markViewed(id())
+                    } else {
+                      org.markUnread(id())
+                    }
+                  }}
+                >
+                  {language.t(isUnread() ? "sidebar.session.markRead" : "sidebar.session.markUnread")}
+                </Menu.Item>
                 <Menu.Item onSelect={() => archiveTab()}>{language.t("common.archive")}</Menu.Item>
                 <Menu.Separator />
               </>
