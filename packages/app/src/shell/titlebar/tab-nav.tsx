@@ -552,7 +552,6 @@ export function TabNavItem(props: {
           <Menu.Item disabled={!props.session || rename.isPending} onSelect={() => setMenu("rename", true)}>
             {language.t("common.rename")}
           </Menu.Item>
-          <Menu.Item onSelect={props.onClose}>{language.t("common.closeTab")}</Menu.Item>
         </Menu.Context.Content>
       </Menu.Context.Portal>
     </Menu.Context>
@@ -718,11 +717,9 @@ export function DraftTabItem(props: {
                     </Menu.SubContent>
                   </Menu.Portal>
                 </Menu.Sub>
-                <Menu.Separator />
               </>
             )}
           </Show>
-          <Menu.Item onSelect={props.onClose}>{language.t("common.closeTab")}</Menu.Item>
         </Menu.Context.Content>
       </Menu.Context.Portal>
     </Menu.Context>
