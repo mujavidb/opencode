@@ -1,10 +1,9 @@
 ;(function () {
-  var key = "opencode-theme-id"
-  var themeId = localStorage.getItem(key) || "oc-2"
-
   var scheme = localStorage.getItem("opencode-color-scheme") || "system"
   var isDark = scheme === "dark" || (scheme === "system" && matchMedia("(prefers-color-scheme: dark)").matches)
   var mode = isDark ? "dark" : "light"
+  var modeKey = isDark ? "opencode-theme-id-dark" : "opencode-theme-id-light"
+  var themeId = localStorage.getItem(modeKey) || localStorage.getItem("opencode-theme-id") || "oc-2"
 
   document.documentElement.dataset.theme = themeId
   document.documentElement.dataset.colorScheme = mode

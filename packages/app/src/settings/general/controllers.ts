@@ -108,6 +108,34 @@ export function createAppearanceSettingsController() {
       },
       select: (option: { id: string } | null) => option && theme.setTheme(option.id),
     },
+    dayTheme: {
+      options: themes,
+      current: createMemo(() => themes().find((option) => option.id === theme.lightThemeId())),
+      highlight: (option: { id: string } | undefined) => {
+        if (!option) {
+          theme.cancelPreview()
+
+          return
+        }
+
+        theme.previewTheme(option.id, "light")
+      },
+      select: (option: { id: string } | null) => option && theme.setLightTheme(option.id),
+    },
+    nightTheme: {
+      options: themes,
+      current: createMemo(() => themes().find((option) => option.id === theme.darkThemeId())),
+      highlight: (option: { id: string } | undefined) => {
+        if (!option) {
+          theme.cancelPreview()
+
+          return
+        }
+
+        theme.previewTheme(option.id, "dark")
+      },
+      select: (option: { id: string } | null) => option && theme.setDarkTheme(option.id),
+    },
     fonts: {
       ui: createMemo(() => ({
         value: sansInput(settings.appearance.uiFont()),

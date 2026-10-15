@@ -142,9 +142,10 @@
     overflow: hidden;
     unicode-bidi: plaintext;
     background: var(--v2-background-bg-layer-02);
+    color: var(--v2-text-text-base);
     border: none;
-    padding: 8px 12px;
-    border-radius: 10px;
+    padding: 10px 16px;
+    border-radius: 18px;
     transition:
       background-color 200ms ease,
       color 200ms ease;
@@ -1546,7 +1547,10 @@
   font-weight: 440;
 
   [data-slot="user-message-text"] {
-    background: var(--v2-background-bg-layer-01);
+    background: var(--v2-background-bg-layer-02);
+    color: var(--v2-text-text-base);
+    border-radius: 18px;
+    padding: 10px 16px;
   }
 
   [data-slot="user-message-comments"] {
@@ -1589,39 +1593,7 @@
 
 :root[data-color-scheme="light"] body [data-component="user-message"] [data-slot="user-message-text"] {
   background: var(--v2-background-bg-layer-02);
-}
-
-:root
-  body
-  [data-workspace-session]
-  [data-component="user-message"]:not([data-pending])
-  [data-slot="user-message-text"] {
-  --user-message-mention-prefix-color: var(--v2-blue-300);
-
-  background: var(--v2-background-bg-accent);
-  color: var(--v2-text-text-contrast);
-}
-
-:root body [data-local-session] [data-component="user-message"] [data-slot="user-message-text"] {
-  border-radius: 8px;
-}
-
-:root[data-color-scheme="light"]
-  body
-  [data-local-session]
-  [data-component="user-message"]:not([data-pending])
-  [data-slot="user-message-text"] {
-  background: var(--v2-blue-100);
-  color: var(--v2-blue-700);
-}
-
-:root[data-color-scheme="dark"]
-  body
-  [data-local-session]
-  [data-component="user-message"]:not([data-pending])
-  [data-slot="user-message-text"] {
-  background: var(--v2-blue-1200);
-  color: var(--v2-blue-300);
+  color: var(--v2-text-text-base);
 }
 
 :root body [data-component="user-message"][data-pending] [data-slot="user-message-text"] {

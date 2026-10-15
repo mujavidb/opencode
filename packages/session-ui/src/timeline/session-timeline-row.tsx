@@ -362,6 +362,11 @@ export function createSessionTimelineRowRenderer(input: {
                 contentID={ref()!.partID}
                 showAssistantCopyPartID={copyContentID(row().userMessageID)}
                 turnDurationMs={duration(row().userMessageID)}
+                onFork={
+                  input.actions?.fork
+                    ? () => input.actions?.fork?.({ sessionID: input.sessionID(), messageID: row().userMessageID })
+                    : undefined
+                }
                 defaultOpen={defaultOpen()}
                 toolOpen={input.disclosure.value(disclosureKey()) ?? defaultOpen()}
                 onToolOpenChange={(open) => input.disclosure.set(disclosureKey(), open)}

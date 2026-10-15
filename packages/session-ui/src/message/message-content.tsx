@@ -74,7 +74,7 @@ function modelLabel(
 
 function MessageActionButton(
   props: Pick<ComponentProps<"button">, "disabled" | "onMouseDown" | "onClick" | "aria-label"> & {
-    icon: "check" | "copy" | "reset" | "arrow-down-to-line" | "outline-trash"
+    icon: "check" | "copy" | "reset" | "branch" | "arrow-down-to-line" | "outline-trash"
     label: JSX.Element
   },
 ) {
@@ -258,7 +258,7 @@ export function CurrentUserMessageDisplay(props: {
   const data = useData()
   const dialog = useDialog()
   const i18n = useI18n()
-  const [state, setState] = createStore({ copied: false, reverting: false, updating: false })
+  const [state, setState] = createStore({ copied: false, reverting: false, forking: false, updating: false })
   const status = createMemo(() => props.actions?.pending?.status(props.message.id))
   const pending = createMemo(() => status() !== undefined && status() !== "queued")
   const waiting = createMemo(() => status() === "steering" || status() === "stranded")
@@ -294,6 +294,17 @@ export function CurrentUserMessageDisplay(props: {
       await props.actions.revert({ sessionID: props.sessionID, messageID: props.message.id })
     } finally {
       setState("reverting", false)
+    }
+  }
+
+  const fork = async () => {
+    if (!props.actions?.fork || state.forking) return
+    setState("forking", true)
+
+    try {
+      await props.actions.fork({ sessionID: props.sessionID, messageID: props.message.id })
+    } finally {
+      setState("forking", false)
     }
   }
 
@@ -429,6 +440,19 @@ export function CurrentUserMessageDisplay(props: {
                 void revert()
               }}
               aria-label={i18n.t("ui.message.revertMessage")}
+            />
+          </Show>
+          <Show when={props.actions?.fork && !pending()}>
+            <MessageActionButton
+              icon="branch"
+              label={i18n.t("ui.message.forkMessage")}
+              disabled={state.forking}
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={(event) => {
+                event.stopPropagation()
+                void fork()
+              }}
+              aria-label={i18n.t("ui.message.forkMessage")}
             />
           </Show>
           <Show when={props.text}>
@@ -605,6 +629,7 @@ export function AssistantTextContent(props: {
   message: SessionMessageAssistant
   showCopy: boolean
   turnDurationMs?: number | null
+  onFork?: () => Promise<void> | void
 }) {
   const data = useData()
   const i18n = useI18n()
@@ -654,12 +679,23 @@ export function AssistantTextContent(props: {
       .join(" \u00B7 ")
   })
 
-  const [copied, setCopied] = createSignal(false)
+  const [state, setState] = createStore({ copied: false, forking: false })
 
   const copy = async () => {
     if (!(await writeClipboard(props.text))) return
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
+    setState("copied", true)
+    setTimeout(() => setState("copied", false), 2000)
+  }
+
+  const fork = async () => {
+    if (!props.onFork || state.forking) return
+    setState("forking", true)
+
+    try {
+      await props.onFork()
+    } finally {
+      setState("forking", false)
+    }
   }
 
   return (
@@ -671,12 +707,22 @@ export function AssistantTextContent(props: {
         <Show when={props.showCopy}>
           <div data-slot="text-part-copy-wrapper" data-interrupted={interrupted() ? "" : undefined}>
             <MessageActionButton
-              icon={copied() ? "check" : "copy"}
-              label={copied() ? i18n.t("ui.message.copied") : i18n.t("ui.message.copyResponse")}
+              icon={state.copied ? "check" : "copy"}
+              label={state.copied ? i18n.t("ui.message.copied") : i18n.t("ui.message.copyResponse")}
               onMouseDown={(event) => event.preventDefault()}
               onClick={copy}
-              aria-label={copied() ? i18n.t("ui.message.copied") : i18n.t("ui.message.copyResponse")}
+              aria-label={state.copied ? i18n.t("ui.message.copied") : i18n.t("ui.message.copyResponse")}
             />
+            <Show when={props.onFork}>
+              <MessageActionButton
+                icon="branch"
+                label={i18n.t("ui.message.forkMessage")}
+                disabled={state.forking}
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => void fork()}
+                aria-label={i18n.t("ui.message.forkMessage")}
+              />
+            </Show>
             <Show when={meta()}>
               <span data-slot="text-part-meta" class="text-12-regular text-text-weak cursor-default">
                 {meta()}

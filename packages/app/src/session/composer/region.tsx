@@ -19,6 +19,8 @@ import { useLocal } from "@/providers/models/selection"
 import { usePlatform } from "@/runtime/platform/platform"
 import { useWorkspaceLocation } from "@/workspaces/location"
 import { requireServerKey, sessionHref } from "@/shell/routes/session"
+import { useTabs } from "@/shell/tabs/tabs"
+import { useSessionOrganization } from "@/session/organization"
 import { useComposerCommands } from "@/composer/commands"
 import { useSessionCommands } from "../commands/use-session-commands"
 import type { SessionModel } from "../model"
@@ -49,6 +51,8 @@ export function createActiveSessionRegion(input: {
   const local = useLocal()
   const location = useWorkspaceLocation()
   const navigate = useNavigate()
+  const tabs = useTabs()
+  const org = useSessionOrganization()
   const platform = usePlatform()
   const prompt = useComposerState()
   const state = createSessionRequestModel()
@@ -190,6 +194,27 @@ export function createActiveSessionRegion(input: {
 
   const revertMessage: NonNullable<SessionUserActions["revert"]> = ({ messageID }) => revert.to(messageID)
 
+  const forkMessage: NonNullable<SessionUserActions["fork"]> = async ({ sessionID, messageID }) => {
+    const messages = data.session.message.list(sessionID)
+    const index = messages.findIndex((item) => item.id === messageID)
+    const nextUser = index >= 0 ? messages.slice(index + 1).find((item) => item.type === "user") : undefined
+
+    await server.api.session
+      .fork({ sessionID, before: nextUser?.id })
+      .then((forked) => {
+        data.session.remember(forked)
+        const folder = org.folderForSession(sessionID)
+        if (folder) org.assignFolder(forked.id, folder.id)
+        const serverKey = requireServerKey(input.session.identity.params.serverKey)
+        const tab = tabs.addSessionTab({ server: serverKey, sessionId: forked.id })
+        tabs.select(tab)
+      })
+      .catch((cause: unknown) => {
+        const message = cause instanceof Error ? cause.message : String(cause)
+        showToast({ title: language.t("common.requestFailed"), description: message })
+      })
+  }
+
   const notifyFailed = () => {
     showToast({ title: language.t("common.requestFailed") })
   }
@@ -266,6 +291,11 @@ export function createActiveSessionRegion(input: {
           if (input.session.data.isChild()) return
 
           return revertMessage
+        },
+        get fork() {
+          if (input.session.data.isChild()) return
+
+          return forkMessage
         },
         get pending() {
           if (input.session.data.isChild()) return

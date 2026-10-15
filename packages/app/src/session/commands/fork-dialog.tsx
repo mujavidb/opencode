@@ -13,6 +13,7 @@ import { extractPromptContext, extractPromptFromMessage } from "@/composer/promp
 import { useWorkspaceLocation } from "@/workspaces/location"
 import { useServer } from "@/runtime/server/current"
 import { sessionHref } from "@/shell/routes/session"
+import { useSessionOrganization } from "@/session/organization"
 
 interface ForkableMessage {
   id: string
@@ -34,6 +35,7 @@ export const DialogFork: Component = () => {
   const dialog = useDialog()
   const language = useLanguage()
   const server = useServer()
+  const org = useSessionOrganization()
 
   const messages = createMemo((): ForkableMessage[] => {
     const sessionID = params.id
@@ -78,6 +80,8 @@ export const DialogFork: Component = () => {
       .fork({ sessionID, before: item.id })
       .then((forked) => {
         data.session.remember(forked)
+        const folder = org.folderForSession(sessionID)
+        if (folder) org.assignFolder(forked.id, folder.id)
         dialog.close()
         const target = prompt.capture({ dir, id: forked.id })
         target.set(restored)

@@ -104,10 +104,10 @@ export const SettingsAppearance: Component = () => {
             </SettingsRow>
 
             <SettingsRow
-              title={language.t("settings.general.row.theme.title")}
+              title={language.t("settings.general.row.dayTheme.title")}
               description={
                 <>
-                  {language.t("settings.general.row.theme.description")}{" "}
+                  {language.t("settings.general.row.dayTheme.description")}{" "}
                   <ExternalLink class="settings-link" href="https://opencode.ai/docs/themes/">
                     {language.t("common.learnMore")}
                   </ExternalLink>
@@ -116,14 +116,38 @@ export const SettingsAppearance: Component = () => {
             >
               <Select
                 data-action="settings-theme"
-                options={appearance.theme.options()}
-                current={appearance.theme.current()}
+                options={appearance.dayTheme.options()}
+                current={appearance.dayTheme.current()}
                 placement="bottom-end"
                 gutter={6}
                 value={(option) => option.id}
                 label={(option) => option.name}
-                onHighlight={appearance.theme.highlight}
-                onSelect={appearance.theme.select}
+                onHighlight={appearance.dayTheme.highlight}
+                onSelect={appearance.dayTheme.select}
+              />
+            </SettingsRow>
+
+            <SettingsRow
+              title={language.t("settings.general.row.nightTheme.title")}
+              description={
+                <>
+                  {language.t("settings.general.row.nightTheme.description")}{" "}
+                  <ExternalLink class="settings-link" href="https://opencode.ai/docs/themes/">
+                    {language.t("common.learnMore")}
+                  </ExternalLink>
+                </>
+              }
+            >
+              <Select
+                data-action="settings-night-theme"
+                options={appearance.nightTheme.options()}
+                current={appearance.nightTheme.current()}
+                placement="bottom-end"
+                gutter={6}
+                value={(option) => option.id}
+                label={(option) => option.name}
+                onHighlight={appearance.nightTheme.highlight}
+                onSelect={appearance.nightTheme.select}
               />
             </SettingsRow>
 
