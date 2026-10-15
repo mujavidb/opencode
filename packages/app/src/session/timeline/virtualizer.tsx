@@ -84,6 +84,7 @@ type Input = {
 
 type ViewProps = {
   header: JSX.Element
+  overlay?: JSX.Element
   bottomSpacer?: JSX.Element
   workspaceSession: Accessor<boolean>
   deferred: (row: TimelineRow.TimelineRow) => boolean
@@ -490,6 +491,23 @@ export function createTimelineVirtualizer(input: Input) {
 
   const virtualRowKeys = createMemo(() => virtualizer.getVirtualItems().map((item) => String(item.key)))
 
+  function revealMessage(id: string, partID?: string) {
+    if (!active()) return
+
+    const partIndex = partID
+      ? rows().findIndex(
+          (row) =>
+            Predicate.isTagged(row, "AssistantPart") && row.group.type === "part" && row.group.ref.partID === partID,
+        )
+      : -1
+
+    const index = partIndex >= 0 ? partIndex : input.projection.messageRowIndex().get(id)
+
+    if (index === undefined) return
+    prepareNavigation()
+    virtualizer.scrollToIndex(index, { align: "center" })
+  }
+
   createEffect(() => {
     if (!active()) return
     const root = listRoot()
@@ -512,22 +530,7 @@ export function createTimelineVirtualizer(input: Input) {
       reportOffset?.(root.scrollTop, false)
       settleColdBottom()
     })
-    input.setRevealMessage?.((id, partID) => {
-      if (!active()) return
-
-      const partIndex = partID
-        ? rows().findIndex(
-            (row) =>
-              Predicate.isTagged(row, "AssistantPart") && row.group.type === "part" && row.group.ref.partID === partID,
-          )
-        : -1
-
-      const index = partIndex >= 0 ? partIndex : input.projection.messageRowIndex().get(id)
-
-      if (index === undefined) return
-      prepareNavigation()
-      virtualizer.scrollToIndex(index, { align: "center" })
-    })
+    input.setRevealMessage?.(revealMessage)
     input.setScrollToEnd?.(() => {
       if (!active() || !listRoot()?.isConnected) return
       prepareNavigation()
@@ -846,6 +849,7 @@ export function createTimelineVirtualizer(input: Input) {
         data-workspace-session={props.workspaceSession() ? "" : undefined}
         data-local-session={!props.workspaceSession() ? "" : undefined}
       >
+        {props.overlay}
         <div
           class="absolute left-1/2 -translate-x-1/2 z-[60] pointer-events-none transition-all duration-200 ease-out"
           classList={{
@@ -946,6 +950,7 @@ export function createTimelineVirtualizer(input: Input) {
       value: (key: string) => toolOpen[key],
       set: (key: string, open: boolean) => setToolOpen(key, open),
     },
+    revealMessage,
     revealPart,
     View,
   }

@@ -27,6 +27,7 @@ import { useCommand } from "@/shell/commands/command"
 import { SessionAncestorTrail, SessionProjectMenu, SessionTitleHeader } from "../session-identity-header"
 import { SessionHeaderSpacer } from "@/session/header/session-header"
 import { SessionRunningMenu } from "@/session/header/session-running-menu"
+import { SessionMessageRail } from "./message-rail"
 
 type BlockingTask = { type: "shell" | "subagent"; partID: string; id?: string; label?: string }
 
@@ -402,9 +403,38 @@ function MessageTimelineView(
     />
   )
 
+  const userMessages = createMemo(() =>
+    projection
+      .rows()
+      .flatMap((row) => {
+        if (!Predicate.isTagged(row, "UserMessage")) return []
+        const message = messageByID().get(row.userMessageID)
+
+        return message?.type === "user" ? [message] : []
+      }),
+  )
+
   return (
     <VirtualizedTimeline
       workspaceSession={workspaceSession}
+      overlay={
+        <SessionMessageRail
+          sessionID={sessionID()}
+          userMessages={userMessages()}
+          assistantByUser={projection.assistantMessagesByParent()}
+          contextByUser={projection.userContextByID()}
+          activeMessageID={projection.activeMessageID() ?? userMessages().at(-1)?.id}
+          onSelect={(messageID) => {
+            props.onUnpin()
+            virtualized.revealMessage(messageID)
+          }}
+          onFork={
+            props.actions?.fork && sessionID()
+              ? (messageID) => void props.actions?.fork?.({ sessionID: sessionID()!, messageID })
+              : undefined
+          }
+        />
+      }
       bottomSpacer={
         <Show when={showWorking() || backgroundHintPresence.present()}>
           <div
