@@ -509,6 +509,7 @@ export function TitlebarTabStrip(props: {
 
                 if (targetFolderID === "__unassigned__") {
                   org.assignFolder(key, undefined)
+                  org.setGeneralCollapsed(false)
                 }
 
                 if (targetFolderID !== "__unassigned__") {
@@ -558,7 +559,56 @@ export function TitlebarTabStrip(props: {
                   vertical() && dragDrop.targetFolderID === "__unassigned__",
               }}
             >
-              <For each={unassignedTabs()}>{(tab) => renderTabItem(tab, "__unassigned__")}</For>
+              <Show when={vertical()}>
+                <div
+                  data-sidebar-project-row
+                  class="group/sgen relative flex h-7 w-full min-w-0 items-center rounded-[6px] px-1 hover:bg-v2-background-bg-layer-02/70"
+                >
+                  <button
+                    type="button"
+                    data-action="sidebar-general-chats-toggle"
+                    aria-expanded={!org.generalCollapsed()}
+                    class="flex h-full min-w-0 flex-1 items-center gap-1.5 text-start text-[13px] leading-4 text-v2-text-text-faint hover:text-v2-text-text-base [font-weight:500]"
+                    onClick={() => org.toggleGeneralCollapsed()}
+                  >
+                    <Icon
+                      name="chevron-down"
+                      size="small"
+                      class="shrink-0 text-v2-icon-icon-muted transition-transform duration-150"
+                      style={{ transform: `rotate(${org.generalCollapsed() ? -90 : 0}deg)` }}
+                    />
+                    <span class="min-w-0 flex-1 truncate">{language.t("sidebar.chats")}</span>
+                    <Show when={unassignedTabs().length > 0}>
+                      <span class="shrink-0 pe-1 text-[11px] leading-4 text-v2-text-text-faint group-hover/sgen:opacity-0">
+                        {unassignedTabs().length}
+                      </span>
+                    </Show>
+                  </button>
+                  <Show when={props.onNewTabInProject}>
+                    {(create) => (
+                      <div class="hover-reveal absolute end-1 top-1/2 flex -translate-y-1/2 items-center group-hover/sgen:opacity-100">
+                        <Tooltip placement="top" value={language.t("command.session.new")}>
+                          <IconButton
+                            size="small"
+                            variant="ghost-muted"
+                            icon={<Icon name="plus" size="small" />}
+                            aria-label={language.t("command.session.new")}
+                            onClick={(event) => {
+                              event.preventDefault()
+                              event.stopPropagation()
+                              org.setGeneralCollapsed(false)
+                              create()(undefined)
+                            }}
+                          />
+                        </Tooltip>
+                      </div>
+                    )}
+                  </Show>
+                </div>
+              </Show>
+              <Show when={!vertical() || !org.generalCollapsed()}>
+                <For each={unassignedTabs()}>{(tab) => renderTabItem(tab, "__unassigned__")}</For>
+              </Show>
             </div>
           </div>
         </DragDropProvider>

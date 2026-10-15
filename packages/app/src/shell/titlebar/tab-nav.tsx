@@ -400,36 +400,42 @@ export function TabNavItem(props: {
         />
       </Menu.Context.Trigger>
 
-      <div data-slot="tab-close" class="flex shrink-0 items-center gap-0.5">
-        <Show when={props.orientation === "vertical" && chatID()}>
-          <Tooltip placement="top" value={language.t("common.archive")}>
+      <div data-slot="tab-close">
+        <Show
+          when={props.orientation === "vertical"}
+          fallback={
             <IconButton
               size="small"
               variant="ghost-muted"
-              data-action="tab-archive"
-              class="hover-reveal relative z-10 group-hover:opacity-100"
+              class="hover-reveal relative z-10 group-hover:opacity-100 group-data-[active=true]:opacity-100 group-data-[editing=true]:opacity-100"
               onPointerDown={(event) => {
                 event.preventDefault()
                 event.stopPropagation()
               }}
-              onClick={archiveTab}
-              icon={<Icon name="archive" size="small" />}
-              aria-label={language.t("common.archive")}
+              onClick={closeTab}
+              icon={<Icon name="xmark-small" />}
+              aria-label={language.t("common.closeTab")}
             />
-          </Tooltip>
+          }
+        >
+          <Show when={chatID()}>
+            <Tooltip placement="top" value={language.t("common.archive")}>
+              <IconButton
+                size="small"
+                variant="ghost-muted"
+                data-action="tab-archive"
+                class="hover-reveal relative z-10 group-hover:opacity-100"
+                onPointerDown={(event) => {
+                  event.preventDefault()
+                  event.stopPropagation()
+                }}
+                onClick={archiveTab}
+                icon={<Icon name="archive" size="small" />}
+                aria-label={language.t("common.archive")}
+              />
+            </Tooltip>
+          </Show>
         </Show>
-        <IconButton
-          size="small"
-          variant="ghost-muted"
-          class="hover-reveal relative z-10 group-hover:opacity-100 group-data-[active=true]:opacity-100 group-data-[editing=true]:opacity-100"
-          onPointerDown={(event) => {
-            event.preventDefault()
-            event.stopPropagation()
-          }}
-          onClick={closeTab}
-          icon={<Icon name="xmark-small" />}
-          aria-label={language.t("common.closeTab")}
-        />
       </div>
     </div>
   )
@@ -618,24 +624,26 @@ export function DraftTabItem(props: {
             {props.title}
           </span>
         </Menu.Context.Trigger>
-        <div data-slot="tab-close">
-          <IconButton
-            size="small"
-            variant="ghost-muted"
-            onPointerDown={(event) => {
-              event.preventDefault()
-              event.stopPropagation()
-            }}
-            onMouseDown={(event) => {
-              event.preventDefault()
-              event.stopPropagation()
-            }}
-            class="hover-reveal relative z-10 group-hover:opacity-100 group-data-[active=true]:opacity-100 group-data-[editing=true]:opacity-100"
-            onClick={closeTab}
-            icon={<Icon name="xmark-small" />}
-            aria-label={language.t("common.closeTab")}
-          />
-        </div>
+        <Show when={props.orientation !== "vertical"}>
+          <div data-slot="tab-close">
+            <IconButton
+              size="small"
+              variant="ghost-muted"
+              onPointerDown={(event) => {
+                event.preventDefault()
+                event.stopPropagation()
+              }}
+              onMouseDown={(event) => {
+                event.preventDefault()
+                event.stopPropagation()
+              }}
+              class="hover-reveal relative z-10 group-hover:opacity-100 group-data-[active=true]:opacity-100 group-data-[editing=true]:opacity-100"
+              onClick={closeTab}
+              icon={<Icon name="xmark-small" />}
+              aria-label={language.t("common.closeTab")}
+            />
+          </div>
+        </Show>
       </div>
       <Menu.Context.Portal>
         <Menu.Context.Content>

@@ -50,6 +50,7 @@ export const SessionOrganizationSchema = Persistence.struct({
   tagColors: Persistence.record(OrganizeColorSchema),
   groupBy: Persistence.fallback(SessionGroupBySchema, () => "date" as const),
   archivedExpanded: Persistence.fallback(Schema.Boolean, () => false),
+  generalCollapsed: Persistence.fallback(Schema.Boolean, () => false),
 })
 
 export type SessionOrganizationState = typeof SessionOrganizationSchema.Type
@@ -61,6 +62,7 @@ export function initialSessionOrganization(): SessionOrganizationState {
     tagColors: {},
     groupBy: "date",
     archivedExpanded: false,
+    generalCollapsed: false,
   }
 }
 
@@ -224,6 +226,13 @@ function createSessionOrganizationController(persistedStore?: ReturnType<typeof 
     },
     toggleArchivedExpanded() {
       setStore("archivedExpanded", !store.archivedExpanded)
+    },
+    generalCollapsed: () => store.generalCollapsed,
+    setGeneralCollapsed(collapsed: boolean) {
+      setStore("generalCollapsed", collapsed)
+    },
+    toggleGeneralCollapsed() {
+      setStore("generalCollapsed", !store.generalCollapsed)
     },
     isFolderCollapsed(folderID: string) {
       return !!store.folders.find((item) => item.id === folderID)?.collapsed
