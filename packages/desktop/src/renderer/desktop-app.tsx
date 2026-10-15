@@ -190,7 +190,9 @@ function DesktopEffects(props: { api: ElectronAPI }) {
 
   createEffect(() => {
     theme.themeId()
+    theme.previewThemeId()
     theme.mode()
+    theme.previewScheme()
     const background = getComputedStyle(document.documentElement).getPropertyValue("--background-base").trim()
 
     if (background) void props.api.setBackgroundColor(background)

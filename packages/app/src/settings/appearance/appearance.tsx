@@ -98,6 +98,7 @@ export const SettingsAppearance: Component = () => {
 
                   return language.t("theme.scheme.dark")
                 }}
+                onHighlight={appearance.scheme.highlight}
                 onSelect={(option) => option && appearance.scheme.select(option)}
               />
             </SettingsRow>
@@ -121,6 +122,7 @@ export const SettingsAppearance: Component = () => {
                 gutter={6}
                 value={(option) => option.id}
                 label={(option) => option.name}
+                onHighlight={appearance.theme.highlight}
                 onSelect={appearance.theme.select}
               />
             </SettingsRow>

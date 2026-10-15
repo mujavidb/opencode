@@ -83,11 +83,29 @@ export function createAppearanceSettingsController() {
   return {
     scheme: {
       current: theme.colorScheme,
+      highlight: (value: ColorScheme | undefined) => {
+        if (!value) {
+          theme.cancelPreview()
+
+          return
+        }
+
+        theme.previewColorScheme(value)
+      },
       select: (value: ColorScheme) => theme.setColorScheme(value),
     },
     theme: {
       options: themes,
       current: createMemo(() => themes().find((option) => option.id === theme.themeId())),
+      highlight: (option: { id: string } | undefined) => {
+        if (!option) {
+          theme.cancelPreview()
+
+          return
+        }
+
+        theme.previewTheme(option.id)
+      },
       select: (option: { id: string } | null) => option && theme.setTheme(option.id),
     },
     fonts: {

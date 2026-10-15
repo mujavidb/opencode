@@ -103,11 +103,15 @@ export function Select<T>(props: SelectProps<T>) {
   ])
 
   const state: { key?: string; cleanup?: void | (() => void) } = {}
+  let committed = false
 
-  const stop = () => {
+  const stop = (notify = true) => {
+    const hadKey = state.key !== undefined
     state.cleanup?.()
     state.cleanup = undefined
     state.key = undefined
+
+    if (notify && hadKey) local.onHighlight?.(undefined)
   }
 
   const keyFor = (item: T) => (local.value ? local.value(item) : String(item as string))
@@ -116,7 +120,7 @@ export function Select<T>(props: SelectProps<T>) {
     if (!local.onHighlight) return
 
     if (!item) {
-      stop()
+      stop(true)
 
       return
     }
@@ -129,7 +133,7 @@ export function Select<T>(props: SelectProps<T>) {
     state.key = key
   }
 
-  onCleanup(stop)
+  onCleanup(() => stop(true))
 
   const grouped = createMemo(() => groupOptions(local.options, local.groupBy))
 
@@ -180,14 +184,22 @@ export function Select<T>(props: SelectProps<T>) {
         </Item>
       )}
       onChange={(next) => {
+        committed = true
         const v = next == null ? null : Array.isArray(next) ? ((next[0] as T) ?? null) : (next as T)
         local.onSelect?.(v)
-        stop()
+        stop(false)
       }}
       onOpenChange={(open) => {
+        if (open) committed = false
         local.onOpenChange?.(open)
 
-        if (!open) stop()
+        if (!open) {
+          queueMicrotask(() => {
+            const wasCommitted = committed
+            committed = false
+            stop(!wasCommitted)
+          })
+        }
       }}
     >
       <Trigger
@@ -222,7 +234,7 @@ export function Select<T>(props: SelectProps<T>) {
       </Trigger>
       <Portal>
         <Content class={local.contentClass} data-component="menu-v2-content" data-slot="select-v2-content">
-          <Listbox data-slot="select-v2-listbox" />
+          <Listbox data-slot="select-v2-listbox" onPointerLeave={() => move(undefined)} />
         </Content>
       </Portal>
     </Root>
