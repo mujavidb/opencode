@@ -8,12 +8,8 @@ import { useDialog } from "@opencode/ui/context/dialog"
 import { IconButton } from "@opencode/ui/icon-button"
 import { Icon } from "@opencode/ui/icon"
 import { Menu } from "@opencode/ui/menu"
-import {
-  displayName,
-  getProjectAvatarSource,
-  getProjectAvatarVariant,
-  ProjectAvatar,
-} from "@opencode/ui/project-avatar"
+import { Tooltip } from "@opencode/ui/tooltip"
+import { displayName } from "@opencode/ui/project-avatar"
 import { useServerCtx } from "@/runtime/server/runtime"
 import { useLanguage } from "@/runtime/i18n/language"
 import { ServerConnection, serverName, useServers } from "@/runtime/server/registry"
@@ -21,7 +17,6 @@ import { DialogCreateFolder } from "@/session/organize-dialogs"
 import { ORGANIZE_COLOR_STYLES, useSessionOrganization } from "@/session/organization"
 import { SessionTabAvatar } from "@/shell/layout/session-tab-avatar"
 import { showToast } from "@/shell/notifications/toast"
-import { pathKey } from "@/workspaces/path-key"
 import { SessionProgressIndicatorV2 } from "@opencode/session-ui/v2/session-progress-indicator-v2"
 import type { SessionInfo } from "@opencode/client/promise"
 import { sessionTabTitle } from "./tab-title"
@@ -35,11 +30,13 @@ export function TabNavItem(props: {
   ref?: Ref<HTMLDivElement>
   href: string
   server: ServerConnection.Key
+  sessionID?: string
   session: SessionInfo | undefined
   preparing: boolean
   fallbackTitle?: string
   onRename: (title: string) => Promise<void>
   onClose: () => void
+  onArchive?: () => void
   onNavigate: () => void
   active?: boolean
   suppressNavigation?: boolean
@@ -59,10 +56,39 @@ export function TabNavItem(props: {
   let measureFrame: number | undefined
   const rename = createMutation(() => ({ mutationFn: props.onRename }))
 
+  const chatID = () => props.session?.id ?? props.sessionID
+
+  const assignedFolder = createMemo(() => {
+    const id = chatID()
+
+    return id ? org.folderForSession(id) : undefined
+  })
+
   const closeTab = (event: MouseEvent) => {
     event.preventDefault()
     event.stopPropagation()
     props.onClose()
+  }
+
+  const archiveTab = (event?: MouseEvent) => {
+    event?.preventDefault()
+    event?.stopPropagation()
+    const id = chatID()
+
+    if (!id) return
+    org.archive(id, {
+      title: title(),
+      server: props.server,
+      directory: props.session?.location.directory,
+    })
+
+    if (props.onArchive) props.onArchive()
+
+    if (!props.onArchive) props.onClose()
+    showToast({
+      icon: "archive",
+      title: language.t("toast.session.archived.title"),
+    })
   }
 
   const servers = useServers()
@@ -181,6 +207,19 @@ export function TabNavItem(props: {
 
     await rename.mutateAsync(next)
   }
+
+  createEffect(() => {
+    const id = chatID()
+    const currentTitle = title()
+
+    if (!id || !currentTitle) return
+    org.rememberChatInfo({
+      id,
+      title: currentTitle,
+      server: props.server,
+      directory: props.session?.location.directory,
+    })
+  })
 
   createEffect(() => {
     if (editing()) return
@@ -359,9 +398,37 @@ export function TabNavItem(props: {
             event.preventDefault()
           }}
         />
+        <Show when={props.orientation === "vertical" && !editing() ? assignedFolder() : undefined}>
+          {(folder) => (
+            <span
+              data-slot="tab-project-pill"
+              class={`inline-flex h-4 max-w-20 shrink-0 items-center gap-1 rounded-[4px] border px-1 text-[10px] leading-4 ${ORGANIZE_COLOR_STYLES[folder().color].pill}`}
+            >
+              <span class={`size-1.5 shrink-0 rounded-full ${ORGANIZE_COLOR_STYLES[folder().color].dot}`} />
+              <span class="truncate">{folder().name}</span>
+            </span>
+          )}
+        </Show>
       </Menu.Context.Trigger>
 
-      <div data-slot="tab-close">
+      <div data-slot="tab-close" class="flex shrink-0 items-center gap-0.5">
+        <Show when={props.orientation === "vertical" && chatID()}>
+          <Tooltip placement="top" value={language.t("common.archive")}>
+            <IconButton
+              size="small"
+              variant="ghost-muted"
+              data-action="tab-archive"
+              class="hover-reveal relative z-10 group-hover:opacity-100"
+              onPointerDown={(event) => {
+                event.preventDefault()
+                event.stopPropagation()
+              }}
+              onClick={archiveTab}
+              icon={<Icon name="archive" size="small" />}
+              aria-label={language.t("common.archive")}
+            />
+          </Tooltip>
+        </Show>
         <IconButton
           size="small"
           variant="ghost-muted"
@@ -396,7 +463,7 @@ export function TabNavItem(props: {
           setPopoverOpen(value)
         }}
         data={{
-          projectName: projectName(),
+          projectName: assignedFolder()?.name ?? projectName(),
           title: props.session?.title,
           path: previewPath(),
           serverName: serverLabel(),
@@ -411,108 +478,43 @@ export function TabNavItem(props: {
             openRename()
           }}
         >
-          <Show when={props.session}>
-            {(session) => (
+          <Show when={chatID()}>
+            {(id) => (
               <>
-                <Menu.Item onSelect={() => org.togglePin(session().id)}>
-                  {language.t(org.isPinned(session().id) ? "session.organize.unpin" : "session.organize.pin")}
-                </Menu.Item>
                 <Menu.Sub>
-                  <Menu.SubTrigger>{language.t("session.organize.assignProject")}</Menu.SubTrigger>
-                  <Menu.Portal>
-                    <Menu.SubContent class="max-h-72 overflow-y-auto">
-                      <For each={serverCtx()?.projects.list() ?? []}>
-                        {(item) => {
-                          const current = () =>
-                            pathKey(item.worktree) === pathKey(org.effectiveDirectory(session()))
-
-                          return (
-                            <Menu.CheckboxItem
-                              checked={current()}
-                              onChange={() => {
-                                org.assignProject(session().id, item.worktree)
-                                const ctx = serverCtx()
-
-                                if (ctx) {
-                                  ctx.projects.open(item.worktree)
-                                  void ctx.sdk.api.session
-                                    .move({ sessionID: session().id, directory: item.worktree })
-                                    .then(() => ctx.data.session.sync(session().id))
-                                    .catch(() => {})
-                                }
-
-                                showToast({
-                                  variant: "success",
-                                  icon: "circle-check",
-                                  title: language.t("toast.session.assignedProject.title", {
-                                    project: displayName(item),
-                                  }),
-                                })
-                              }}
-                            >
-                              <span class="flex items-center gap-2">
-                                <ProjectAvatar
-                                  fallback={displayName(item)}
-                                  src={getProjectAvatarSource(item.id, item.icon)}
-                                  variant={getProjectAvatarVariant(item.icon?.color)}
-                                />
-                                <span class="max-w-44 truncate">{displayName(item)}</span>
-                              </span>
-                            </Menu.CheckboxItem>
-                          )
-                        }}
-                      </For>
-                    </Menu.SubContent>
-                  </Menu.Portal>
-                </Menu.Sub>
-                <Menu.Sub>
-                  <Menu.SubTrigger>{language.t("session.organize.moveToFolder")}</Menu.SubTrigger>
+                  <Menu.SubTrigger>{language.t("sidebar.projects.assign")}</Menu.SubTrigger>
                   <Menu.Portal>
                     <Menu.SubContent class="max-h-72 overflow-y-auto">
                       <For each={org.folders()}>
                         {(folder) => (
                           <Menu.CheckboxItem
-                            checked={org.folderID(session().id) === folder.id}
+                            checked={org.folderID(id()) === folder.id}
                             onChange={() =>
-                              org.assignFolder(
-                                session().id,
-                                org.folderID(session().id) === folder.id ? undefined : folder.id,
-                              )
+                              org.assignFolder(id(), org.folderID(id()) === folder.id ? undefined : folder.id)
                             }
                           >
                             <span class="flex items-center gap-2">
-                              <Icon name="folder" size="small" class={ORGANIZE_COLOR_STYLES[folder.color].text} />
+                              <span class={`size-2 rounded-full ${ORGANIZE_COLOR_STYLES[folder.color].dot}`} />
                               <span class="max-w-44 truncate">{folder.name}</span>
                             </span>
                           </Menu.CheckboxItem>
                         )}
                       </For>
-                      <Show when={org.folderID(session().id)}>
-                        <Menu.Item onSelect={() => org.assignFolder(session().id, undefined)}>
-                          {language.t("session.organize.removeFromFolder")}
+                      <Show when={org.folderID(id())}>
+                        <Menu.Item onSelect={() => org.assignFolder(id(), undefined)}>
+                          {language.t("sidebar.projects.unassign")}
                         </Menu.Item>
                       </Show>
-                      <Show when={org.folders().length > 0 || org.folderID(session().id)}>
+                      <Show when={org.folders().length > 0 || org.folderID(id())}>
                         <Menu.Separator />
                       </Show>
-                      <Menu.Item onSelect={() => void dialog.show(() => <DialogCreateFolder sessionIDs={[session().id]} />)}>
-                        {language.t("session.organize.newFolder")}
+                      <Menu.Item onSelect={() => void dialog.show(() => <DialogCreateFolder sessionIDs={[id()]} />)}>
+                        {language.t("sidebar.projects.new")}…
                       </Menu.Item>
                     </Menu.SubContent>
                   </Menu.Portal>
                 </Menu.Sub>
-                <Menu.Item
-                  onSelect={() => {
-                    org.archive(session().id)
-                    props.onClose()
-                    showToast({
-                      icon: "archive",
-                      title: language.t("toast.session.archived.title"),
-                    })
-                  }}
-                >
-                  {language.t("session.organize.archive")}
-                </Menu.Item>
+                <Menu.Item onSelect={() => archiveTab()}>{language.t("common.archive")}</Menu.Item>
                 <Menu.Separator />
               </>
             )}
@@ -529,6 +531,7 @@ export function TabNavItem(props: {
 
 export function DraftTabItem(props: {
   ref?: Ref<HTMLDivElement>
+  draftID?: string
   href: string
   title: string
   active?: boolean
@@ -541,6 +544,15 @@ export function DraftTabItem(props: {
   orientation?: "horizontal" | "vertical"
 }) {
   const language = useLanguage()
+  const dialog = useDialog()
+  const org = useSessionOrganization()
+  const chatKey = () => (props.draftID ? `draft:${props.draftID}` : undefined)
+
+  const assignedFolder = createMemo(() => {
+    const key = chatKey()
+
+    return key ? org.folderForSession(key) : undefined
+  })
 
   const closeTab = (event: MouseEvent) => {
     event.preventDefault()
@@ -549,96 +561,155 @@ export function DraftTabItem(props: {
   }
 
   return (
-    <div
-      ref={(el) => {
-        if (Predicate.isFunction(props.ref)) props.ref(el)
-      }}
-      data-titlebar-tab
-      data-slot="titlebar-tab-item"
-      data-orientation={props.orientation ?? "horizontal"}
-      data-active={props.active}
-      data-dragging={props.dragging}
-      data-state={props.active || props.pressed ? "pressed" : undefined}
-      class="group relative flex h-7 w-full min-w-0 flex-row items-center gap-1.5 overflow-hidden rounded-[6px] px-1.5 [container-type:inline-size] whitespace-nowrap"
-      classList={{ invisible: props.hidden }}
-      onMouseDown={(event) => {
-        if (event.button !== MIDDLE_MOUSE_BUTTON) return
-        event.preventDefault()
-        event.stopPropagation()
-      }}
-      onAuxClick={(event) => {
-        if (event.button !== MIDDLE_MOUSE_BUTTON) return
-        closeTab(event)
-      }}
-    >
-      <a
-        data-slot="tab-link"
-        data-titlebar-tab-link
-        href={props.href}
-        draggable={false}
-        onDragStart={(event) => {
+    <Menu.Context modal={false}>
+      <div
+        ref={(el) => {
+          if (Predicate.isFunction(props.ref)) props.ref(el)
+        }}
+        data-titlebar-tab
+        data-slot="titlebar-tab-item"
+        data-orientation={props.orientation ?? "horizontal"}
+        data-active={props.active}
+        data-dragging={props.dragging}
+        data-state={props.active || props.pressed ? "pressed" : undefined}
+        class="group relative flex h-7 w-full min-w-0 flex-row items-center gap-1.5 overflow-hidden rounded-[6px] px-1.5 [container-type:inline-size] whitespace-nowrap"
+        classList={{ invisible: props.hidden }}
+        onMouseDown={(event) => {
+          if (event.button !== MIDDLE_MOUSE_BUTTON) return
           event.preventDefault()
           event.stopPropagation()
         }}
-        onMouseDown={(event) => {
-          // Navigate on mousedown to shave the press-release delay off tab switches.
-          if (event.button !== 0) return
-
-          if (props.suppressNavigation) return
-          props.onNavigate()
+        onAuxClick={(event) => {
+          if (event.button !== MIDDLE_MOUSE_BUTTON) return
+          closeTab(event)
         }}
-        onClick={(event) => {
-          event.preventDefault()
-
-          // Mouse navigation already happened on mousedown; detail 0 means keyboard activation.
-          if (event.detail > 0) return
-
-          if (props.suppressNavigation) return
-          props.onNavigate()
-        }}
-        class="flex h-full min-w-0 flex-1 flex-row items-center gap-1.5 text-[13px] font-medium text-v2-text-text-faint group-data-[active='true']:text-v2-text-text-base [-webkit-user-drag:none]"
       >
-        <span class="flex size-4 shrink-0 items-center justify-center">
-          <svg
-            class="text-v2-icon-icon-muted group-data-[active='true']:text-v2-icon-icon-base"
-            width="16"
-            height="16"
-            viewBox="0 0 16 16"
-            fill="none"
-            xmlns="http://www.w3.org/2000/svg"
-            aria-hidden="true"
-          >
-            <path
-              d="M9.00002 13.5H14M2.60419 10.9167V13.3958H5.08335L13.3959 5.08333L10.9167 2.60416L2.60419 10.9167Z"
-              stroke="currentColor"
-            />
-          </svg>
-        </span>
-        <span
-          data-titlebar-tab-title
-          class="min-w-0 flex-1 overflow-hidden text-clip whitespace-nowrap outline-none leading-4"
+        <Menu.Context.Trigger
+          as="a"
+          data-slot="tab-link"
+          data-titlebar-tab-link
+          href={props.href}
+          draggable={false}
+          onDragStart={(event: DragEvent) => {
+            event.preventDefault()
+            event.stopPropagation()
+          }}
+          onMouseDown={(event: MouseEvent) => {
+            // Navigate on mousedown to shave the press-release delay off tab switches.
+            if (event.button !== 0) return
+
+            if (props.suppressNavigation) return
+            props.onNavigate()
+          }}
+          onClick={(event: MouseEvent) => {
+            event.preventDefault()
+
+            // Mouse navigation already happened on mousedown; detail 0 means keyboard activation.
+            if (event.detail > 0) return
+
+            if (props.suppressNavigation) return
+            props.onNavigate()
+          }}
+          class="flex h-full min-w-0 flex-1 flex-row items-center gap-1.5 text-[13px] font-medium text-v2-text-text-faint group-data-[active='true']:text-v2-text-text-base [-webkit-user-drag:none]"
         >
-          {props.title}
-        </span>
-      </a>
-      <div data-slot="tab-close">
-        <IconButton
-          size="small"
-          variant="ghost-muted"
-          onPointerDown={(event) => {
-            event.preventDefault()
-            event.stopPropagation()
-          }}
-          onMouseDown={(event) => {
-            event.preventDefault()
-            event.stopPropagation()
-          }}
-          class="hover-reveal relative z-10 group-hover:opacity-100 group-data-[active=true]:opacity-100 group-data-[editing=true]:opacity-100"
-          onClick={closeTab}
-          icon={<Icon name="xmark-small" />}
-          aria-label={language.t("common.closeTab")}
-        />
+          <span class="flex size-4 shrink-0 items-center justify-center">
+            <svg
+              class="text-v2-icon-icon-muted group-data-[active='true']:text-v2-icon-icon-base"
+              width="16"
+              height="16"
+              viewBox="0 0 16 16"
+              fill="none"
+              xmlns="http://www.w3.org/2000/svg"
+              aria-hidden="true"
+            >
+              <path
+                d="M9.00002 13.5H14M2.60419 10.9167V13.3958H5.08335L13.3959 5.08333L10.9167 2.60416L2.60419 10.9167Z"
+                stroke="currentColor"
+              />
+            </svg>
+          </span>
+          <span
+            data-titlebar-tab-title
+            class="min-w-0 flex-1 overflow-hidden text-clip whitespace-nowrap outline-none leading-4"
+          >
+            {props.title}
+          </span>
+          <Show when={props.orientation === "vertical" ? assignedFolder() : undefined}>
+            {(folder) => (
+              <span
+                data-slot="tab-project-pill"
+                class={`inline-flex h-4 max-w-20 shrink-0 items-center gap-1 rounded-[4px] border px-1 text-[10px] leading-4 ${ORGANIZE_COLOR_STYLES[folder().color].pill}`}
+              >
+                <span class={`size-1.5 shrink-0 rounded-full ${ORGANIZE_COLOR_STYLES[folder().color].dot}`} />
+                <span class="truncate">{folder().name}</span>
+              </span>
+            )}
+          </Show>
+        </Menu.Context.Trigger>
+        <div data-slot="tab-close">
+          <IconButton
+            size="small"
+            variant="ghost-muted"
+            onPointerDown={(event) => {
+              event.preventDefault()
+              event.stopPropagation()
+            }}
+            onMouseDown={(event) => {
+              event.preventDefault()
+              event.stopPropagation()
+            }}
+            class="hover-reveal relative z-10 group-hover:opacity-100 group-data-[active=true]:opacity-100 group-data-[editing=true]:opacity-100"
+            onClick={closeTab}
+            icon={<Icon name="xmark-small" />}
+            aria-label={language.t("common.closeTab")}
+          />
+        </div>
       </div>
-    </div>
+      <Menu.Context.Portal>
+        <Menu.Context.Content>
+          <Show when={chatKey()}>
+            {(key) => (
+              <>
+                <Menu.Sub>
+                  <Menu.SubTrigger>{language.t("sidebar.projects.assign")}</Menu.SubTrigger>
+                  <Menu.Portal>
+                    <Menu.SubContent class="max-h-72 overflow-y-auto">
+                      <For each={org.folders()}>
+                        {(folder) => (
+                          <Menu.CheckboxItem
+                            checked={org.folderID(key()) === folder.id}
+                            onChange={() =>
+                              org.assignFolder(key(), org.folderID(key()) === folder.id ? undefined : folder.id)
+                            }
+                          >
+                            <span class="flex items-center gap-2">
+                              <span class={`size-2 rounded-full ${ORGANIZE_COLOR_STYLES[folder.color].dot}`} />
+                              <span class="max-w-44 truncate">{folder.name}</span>
+                            </span>
+                          </Menu.CheckboxItem>
+                        )}
+                      </For>
+                      <Show when={org.folderID(key())}>
+                        <Menu.Item onSelect={() => org.assignFolder(key(), undefined)}>
+                          {language.t("sidebar.projects.unassign")}
+                        </Menu.Item>
+                      </Show>
+                      <Show when={org.folders().length > 0 || org.folderID(key())}>
+                        <Menu.Separator />
+                      </Show>
+                      <Menu.Item onSelect={() => void dialog.show(() => <DialogCreateFolder sessionIDs={[key()]} />)}>
+                        {language.t("sidebar.projects.new")}…
+                      </Menu.Item>
+                    </Menu.SubContent>
+                  </Menu.Portal>
+                </Menu.Sub>
+                <Menu.Separator />
+              </>
+            )}
+          </Show>
+          <Menu.Item onSelect={props.onClose}>{language.t("common.closeTab")}</Menu.Item>
+        </Menu.Context.Content>
+      </Menu.Context.Portal>
+    </Menu.Context>
   )
 }

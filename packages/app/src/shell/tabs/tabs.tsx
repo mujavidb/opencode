@@ -22,6 +22,7 @@ import {
 import { appendPrompt, promptLength } from "@/composer/prompt-parts"
 import { TabStorage } from "./schema"
 import { useCurrentRoute } from "@/shell/state/layout"
+import { useSessionOrganization } from "@/session/organization"
 
 export type SessionTab = typeof TabStorage.Session.Type
 
@@ -89,6 +90,7 @@ export const { use: useTabs, provider: TabsProvider } = createSimpleContext({
     const location = useLocation()
     const memory = createTabMemory(getOwner())
     const currentRoute = useCurrentRoute()
+    const org = useSessionOrganization()
 
     const closing = new Set<string>()
     let recentWrite = 0
@@ -296,6 +298,7 @@ export const { use: useTabs, provider: TabsProvider } = createSimpleContext({
         )
       },
       promoteDraft(draftID: string, session: Omit<SessionTab, "type">) {
+        org.transferDraft(draftID, session.sessionId)
         // Keep the replacement and navigation atomic so /new-session never renders
         // after its backing draft tab has been removed from the store.
         const active = location.pathname === "/new-session" && location.query.draftId === draftID
@@ -324,6 +327,7 @@ export const { use: useTabs, provider: TabsProvider } = createSimpleContext({
         session: Omit<SessionTab, "type">,
         preview: { message: SessionMessageUser; selection: ComposerSelection },
       ) {
+        org.transferDraft(draftID, session.sessionId)
         // Snapshot the draft before replacing its store entry; keep its composer alive for rollback.
         const draft = { ...actions.draft(draftID) }
         const next = { type: "session" as const, ...session }

@@ -41,8 +41,6 @@ export function HomeProjects(props: {
       onRevealProject={props.projects.project.reveal}
       onClearNotifications={props.projects.project.clearNotifications}
       onCloseProject={props.projects.project.close}
-      onDropSessionsOnProject={props.projects.project.assignSessions}
-      organize={props.projects.organize}
       onOpenSettings={props.projects.utility.settings}
       onOpenHelp={props.projects.utility.help}
     />

@@ -27,9 +27,6 @@ import { ServerRowMenuView, serverMenuLabels } from "@/servers/registry/row-menu
 import { ServerHealthIndicator } from "@/servers/registry/row"
 import { type ServerHealth } from "@/runtime/server/health"
 import { fileManagerApp } from "@/home/projects/file-manager"
-import { InlineInput } from "@opencode/ui/inline-input"
-import { ORGANIZE_COLOR_STYLES, type SessionFolder } from "@/session/organization"
-import type { HomeProjectsController } from "./controller"
 import "./view.css"
 
 const HOME_PROJECT_NAV_LABEL = "min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap"
@@ -77,19 +74,8 @@ export type HomeProjectsViewProps = {
   onRevealProject: (server: ServerConnection.Any, project: LocalProject) => void
   onClearNotifications: (server: ServerConnection.Any, project: LocalProject) => void
   onCloseProject: (server: ServerConnection.Any, directory: string) => void
-  onDropSessionsOnProject: (server: ServerConnection.Any, directory: string, sessionIDs: readonly string[]) => void
-  organize: HomeProjectsController["organize"]
   onOpenSettings: () => void
   onOpenHelp: () => void
-}
-
-function readDraggedSessionIDs(event: DragEvent) {
-  const text = event.dataTransfer?.getData("text/plain") ?? ""
-
-  return text
-    .split(",")
-    .map((id) => id.trim())
-    .filter((id) => id.startsWith("ses_"))
 }
 
 export function HomeProjectsView(props: HomeProjectsViewProps) {
@@ -312,9 +298,6 @@ function HomeProjectsPanel(props: HomeProjectsViewProps) {
               }}
             </For>
           </div>
-        </Show>
-        <Show when={!props.dropdown}>
-          <HomeOrganizeSidebarSection {...props} {...contextMenuProps} />
         </Show>
       </ScrollView>
       <HomeUtilityNav
@@ -682,7 +665,6 @@ function HomeProjectRow(
   })
 
   let pointerDownSelected: boolean | undefined
-  const [dropActive, setDropActive] = createStore({ over: false })
   const contextMenuID = () => projectContextMenuID(props.server, props.project.worktree)
   onCleanup(() => {
     const id = contextMenuID()
@@ -693,33 +675,12 @@ function HomeProjectRow(
   return (
     <div
       ref={sortable.ref}
-      class="group/project relative flex h-7 min-w-0 items-center rounded-[6px] transition-shadow"
-      classList={{
-        "z-10": sortable.isDragSource(),
-        "ring-1 ring-v2-text-text-muted bg-v2-background-bg-layer-02": dropActive.over,
-      }}
+      class="group/project relative flex h-7 min-w-0 items-center rounded-[6px]"
+      classList={{ "z-10": sortable.isDragSource() }}
       data-home-row
       data-dimmed={serverUnreachable()}
       data-dragging={sortable.isDragSource()}
       data-selected={props.selected ? "" : undefined}
-      onDragOver={(event) => {
-        if (!event.dataTransfer?.types.includes("application/x-opencode-sessions")) return
-        event.preventDefault()
-        event.dataTransfer.dropEffect = "move"
-
-        if (!dropActive.over) setDropActive("over", true)
-      }}
-      onDragLeave={(event) => {
-        if (event.relatedTarget instanceof Node && event.currentTarget.contains(event.relatedTarget)) return
-        setDropActive("over", false)
-      }}
-      onDrop={(event) => {
-        setDropActive("over", false)
-
-        if (!event.dataTransfer?.types.includes("application/x-opencode-sessions")) return
-        event.preventDefault()
-        props.onDropSessionsOnProject(props.server, props.project.worktree, readDraggedSessionIDs(event))
-      }}
       onContextMenu={(event) => {
         event.preventDefault()
         props.onSetContextMenuOpen(contextMenuID(), true)
@@ -878,249 +839,5 @@ function HomeProjectAvatar(props: { project: LocalProject; outline?: boolean }) 
       src={props.outline ? undefined : getProjectAvatarSource(props.project.id, props.project.icon)}
       variant={props.outline ? "outline" : getProjectAvatarVariant(props.project.icon?.color)}
     />
-  )
-}
-
-function HomeOrganizeSidebarSection(props: HomeProjectsViewProps & HomeProjectsContextMenuProps) {
-  const [editor, setEditor] = createStore<{ item: { id: string; draft: string } | undefined }>({ item: undefined })
-
-  return (
-    <div class="mt-4 flex min-w-0 flex-col gap-3 pr-3">
-      <div class="flex min-w-0 flex-col gap-1">
-        <div class="flex h-7 min-w-0 shrink-0 items-center justify-between pl-1.5">
-          <div class="text-v2-text-text-muted [font-weight:530]">{props.language.t("home.folders")}</div>
-          <Tooltip placement="bottom" value={props.language.t("home.folders.add")}>
-            <IconButton
-              data-action="home-add-folder"
-              variant="ghost-muted"
-              size="small"
-              icon={<Icon name="plus" />}
-              aria-label={props.language.t("home.folders.add")}
-              onClick={() => props.organize.createFolder()}
-            />
-          </Tooltip>
-        </div>
-
-        <Show
-          when={props.organize.folders().length > 0}
-          fallback={
-            <button
-              type="button"
-              data-action="home-add-folder-empty"
-              class="flex min-h-7 w-full items-center gap-2 rounded-[6px] px-1.5 py-1 text-left text-[12px] leading-4 text-v2-text-text-faint hover:bg-v2-background-bg-layer-01 hover:text-v2-text-text-muted"
-              onClick={() => props.organize.createFolder()}
-            >
-              <Icon name="folder-add-left" size="small" class="shrink-0" />
-              <span class="min-w-0 flex-1 truncate">{props.language.t("home.folders.add")}</span>
-            </button>
-          }
-        >
-          <div class="flex min-w-0 flex-col gap-0.5">
-            <For each={props.organize.folders()}>
-              {(folder) => (
-                <HomeFolderRow
-                  {...props}
-                  folder={folder}
-                  editing={editor.item?.id === folder.id ? editor.item.draft : undefined}
-                  onStartEdit={() => setEditor("item", { id: folder.id, draft: folder.name })}
-                  onEditInput={(draft) => setEditor("item", { id: folder.id, draft })}
-                  onSaveEdit={() => {
-                    if (editor.item?.id === folder.id) {
-                      props.organize.renameFolder(folder.id, editor.item.draft)
-                      setEditor("item", undefined)
-                    }
-                  }}
-                  onCancelEdit={() => setEditor("item", undefined)}
-                />
-              )}
-            </For>
-          </div>
-        </Show>
-      </div>
-
-      <Show when={props.organize.tags().length > 0}>
-        <div class="flex min-w-0 flex-col gap-1.5">
-          <div class="flex h-6 min-w-0 shrink-0 items-center pl-1.5">
-            <div class="text-v2-text-text-muted [font-weight:530]">{props.language.t("home.tags")}</div>
-          </div>
-          <div class="flex flex-wrap gap-1 px-1.5">
-            <For each={props.organize.tags()}>
-              {(tag) => {
-                const active = () => props.organize.selectedTag() === tag
-                const color = () => props.organize.tagColor(tag)
-
-                return (
-                  <button
-                    type="button"
-                    data-component="home-tag-pill"
-                    data-selected={active() ? "" : undefined}
-                    class={`inline-flex h-5 items-center gap-1 rounded-[4px] border px-1.5 text-[11px] leading-4 transition-opacity ${ORGANIZE_COLOR_STYLES[color()].pill}`}
-                    classList={{
-                      "ring-1 ring-v2-text-text-base": active(),
-                      "opacity-80 hover:opacity-100": !active(),
-                    }}
-                    onClick={() => props.organize.selectTag(tag)}
-                  >
-                    <span class="max-w-28 truncate">#{tag}</span>
-                  </button>
-                )
-              }}
-            </For>
-          </div>
-        </div>
-      </Show>
-    </div>
-  )
-}
-
-function HomeFolderRow(
-  props: HomeProjectsViewProps &
-    HomeProjectsContextMenuProps & {
-      folder: SessionFolder
-      editing: string | undefined
-      onStartEdit: () => void
-      onEditInput: (draft: string) => void
-      onSaveEdit: () => void
-      onCancelEdit: () => void
-    },
-) {
-  const [dropActive, setDropActive] = createStore({ over: false })
-  const selected = () => props.organize.selectedFolderID() === props.folder.id
-  const count = () => props.organize.folderCount(props.folder.id)
-  const menuID = () => `folder:${props.folder.id}`
-
-  return (
-    <div
-      class="group/folder relative flex h-7 min-w-0 items-center rounded-[6px] transition-shadow"
-      classList={{
-        "ring-1 ring-v2-text-text-muted bg-v2-background-bg-layer-02": dropActive.over,
-      }}
-      data-home-row
-      data-selected={selected() ? "" : undefined}
-      onDragOver={(event) => {
-        if (!event.dataTransfer?.types.includes("application/x-opencode-sessions")) return
-        event.preventDefault()
-        event.dataTransfer.dropEffect = "move"
-
-        if (!dropActive.over) setDropActive("over", true)
-      }}
-      onDragLeave={(event) => {
-        if (event.relatedTarget instanceof Node && event.currentTarget.contains(event.relatedTarget)) return
-        setDropActive("over", false)
-      }}
-      onDrop={(event) => {
-        setDropActive("over", false)
-
-        if (!event.dataTransfer?.types.includes("application/x-opencode-sessions")) return
-        event.preventDefault()
-        props.organize.dropSessionsOnFolder(props.folder, readDraggedSessionIDs(event))
-      }}
-      onContextMenu={(event) => {
-        if (props.editing !== undefined) return
-        event.preventDefault()
-        props.onSetContextMenuOpen(menuID(), true)
-      }}
-    >
-      <Show
-        when={props.editing === undefined}
-        fallback={
-          <div class="flex h-7 w-full items-center gap-2 px-1.5">
-            <Icon name="folder" size="small" class={`shrink-0 ${ORGANIZE_COLOR_STYLES[props.folder.color].text}`} />
-            <InlineInput
-              aria-label={props.language.t("home.folders.rename")}
-              value={props.editing ?? ""}
-              class="min-w-0 flex-1 text-v2-text-text-base outline-none"
-              onInput={(event) => props.onEditInput(event.currentTarget.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") {
-                  event.preventDefault()
-                  props.onSaveEdit()
-
-                  return
-                }
-
-                if (event.key === "Escape") {
-                  event.preventDefault()
-                  props.onCancelEdit()
-                }
-              }}
-              onBlur={props.onSaveEdit}
-            />
-          </div>
-        }
-      >
-        <HomeProjectNavButton
-          type="button"
-          data-component="home-folder-row"
-          data-selected={selected() ? "" : undefined}
-          onClick={() => props.organize.selectFolder(props.folder.id)}
-        >
-          <Icon name="folder" size="small" class={`shrink-0 ${ORGANIZE_COLOR_STYLES[props.folder.color].text}`} />
-          <span data-slot="home-row-label" class={HOME_PROJECT_NAV_LABEL}>
-            {props.folder.name}
-          </span>
-          <Show when={count() > 0}>
-            <span class="shrink-0 text-[11px] leading-4 text-v2-text-text-faint group-hover/folder:opacity-0">
-              {count()}
-            </span>
-          </Show>
-        </HomeProjectNavButton>
-      </Show>
-
-      <div
-        data-slot="home-row-actions"
-        class={`
-          hover-reveal absolute bottom-0 right-1 top-0 flex items-center gap-1 rounded-r-[6px] pl-2
-          group-hover/folder:opacity-100 focus-within:opacity-100 data-[menu=true]:opacity-100
-        `}
-        data-menu={props.contextMenuOpen(menuID())}
-      >
-        <Menu
-          gutter={6}
-          modal={false}
-          placement="bottom-end"
-          open={props.contextMenuOpen(menuID())}
-          onOpenChange={(open) => props.onSetContextMenuOpen(menuID(), open)}
-        >
-          <Menu.Trigger
-            as={IconButton}
-            data-action="home-folder-menu"
-            variant="ghost-muted"
-            size="small"
-            icon={<Icon name="outline-dots" />}
-            aria-label={props.language.t("common.moreOptions")}
-          />
-          <Menu.Portal>
-            <Menu.Content>
-              <Menu.Item onSelect={props.onStartEdit}>{props.language.t("common.rename")}</Menu.Item>
-              <Menu.Sub>
-                <Menu.SubTrigger>{props.language.t("home.folders.color")}</Menu.SubTrigger>
-                <Menu.Portal>
-                  <Menu.SubContent>
-                    <For each={props.organize.colors}>
-                      {(color) => (
-                        <Menu.CheckboxItem
-                          checked={props.folder.color === color}
-                          onChange={() => props.organize.setFolderColor(props.folder.id, color)}
-                        >
-                          <span class="flex items-center gap-2">
-                            <span class={`size-2.5 rounded-full ${ORGANIZE_COLOR_STYLES[color].dot}`} />
-                            <span>{props.language.t(`common.color.${color}`)}</span>
-                          </span>
-                        </Menu.CheckboxItem>
-                      )}
-                    </For>
-                  </Menu.SubContent>
-                </Menu.Portal>
-              </Menu.Sub>
-              <Menu.Separator />
-              <Menu.Item onSelect={() => props.organize.deleteFolder(props.folder.id)}>
-                {props.language.t("common.delete")}
-              </Menu.Item>
-            </Menu.Content>
-          </Menu.Portal>
-        </Menu>
-      </div>
-    </div>
   )
 }

@@ -74,18 +74,6 @@ describe("buildHomeSessionRecords", () => {
 
     expect(records.map((record) => record.session.id)).toEqual(["ses_a", "ses_z", "ses_old"])
   })
-
-  test("resolves and filters sessions using their assigned project directory override", () => {
-    const records = buildHomeSessionRecords({
-      sessions: () => sessions,
-      projectDirectories: () => ["/repo/a"],
-      projects: () => [{ ...opened, name: "Project A" }],
-      effectiveDirectory: (item) => (item.id === "b" ? "/repo/a" : item.location.directory),
-    })
-
-    expect(records.map((record) => record.session.id)).toEqual(["a", "b"])
-    expect(records[1]?.projectName).toBe("Project A")
-  })
 })
 
 test("homeSessionLocation returns the worktree directory name and branch when known", () => {

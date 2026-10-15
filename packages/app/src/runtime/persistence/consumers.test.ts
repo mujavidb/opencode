@@ -114,12 +114,14 @@ describe("persisted consumer schemas", () => {
       [
         {
           groupBy: "project",
+          archivedExpanded: false,
           folders: [{ id: "fld_1", name: "Sprint", color: "purple", createdAt: 10 }],
           sessions: { ses_1: { archivedAt: 100, pinnedAt: 50, folderID: "fld_1", projectDirectory: "/repo/a", tags: ["wip"] } },
           tagColors: { wip: "orange" },
         },
         {
           groupBy: "project",
+          archivedExpanded: false,
           folders: [{ id: "fld_1", name: "Sprint", color: "purple", createdAt: 10 }],
           sessions: { ses_1: { archivedAt: 100, pinnedAt: 50, folderID: "fld_1", projectDirectory: "/repo/a", tags: ["wip"] } },
           tagColors: { wip: "orange" },

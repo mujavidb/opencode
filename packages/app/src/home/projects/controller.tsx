@@ -16,8 +16,6 @@ import { Persistence } from "@/runtime/persistence/schema"
 import type { HomeController } from "../model"
 import { useGlobal } from "@/runtime/server/runtime"
 import { SessionTransfer } from "@opencode/schema/session-transfer"
-import { DialogCreateFolder } from "@/session/organize-dialogs"
-import { ORGANIZE_COLORS, type OrganizeColor, type SessionFilterMode, type SessionFolder } from "@/session/organization"
 import { useRevealProject } from "./reveal"
 
 export const HomeServersSchema = Schema.Struct({
@@ -181,70 +179,8 @@ export function createHomeProjectsController(home: HomeController) {
       move: (conn: ServerConnection.Any, worktree: string, index: number) => {
         home.server.context(conn).projects.move(worktree, index)
       },
-      assignSessions: (conn: ServerConnection.Any, directory: string, sessionIDs: readonly string[]) => {
-        const ids = sessionIDs.length > 0 ? sessionIDs : home.organize.draggingSessionIDs()
-
-        if (ids.length === 0) return
-        home.organize.assignSessionsToProject(conn, ids, directory)
-        home.organize.setDraggingSessionIDs([])
-      },
       canReveal: revealProject.available,
       reveal: revealProject.reveal,
-    },
-    organize: {
-      mode: home.organize.mode,
-      setMode: (mode: SessionFilterMode) => {
-        home.organize.setMode(mode)
-      },
-      showAllSessions: () => {
-        const current = home.selection.value()
-
-        if (current.directory) home.selection.set({ server: current.server })
-        home.organize.clearFolder()
-        home.organize.clearTag()
-        home.organize.setMode("active")
-      },
-      folders: () => home.organize.org.folders(),
-      selectedFolderID: home.organize.folderID,
-      selectFolder: (folderID: string) => home.organize.setFolderID(folderID),
-      createFolder: () => {
-        void dialog.show(() => <DialogCreateFolder />)
-      },
-      renameFolder: (folderID: string, name: string) => home.organize.org.renameFolder(folderID, name),
-      setFolderColor: (folderID: string, color: OrganizeColor) => home.organize.org.setFolderColor(folderID, color),
-      deleteFolder: (folderID: string) => {
-        if (home.organize.folderID() === folderID) home.organize.clearFolder()
-        home.organize.org.deleteFolder(folderID)
-      },
-      dropSessionsOnFolder: (folder: SessionFolder, sessionIDs: readonly string[]) => {
-        const ids = sessionIDs.length > 0 ? sessionIDs : home.organize.draggingSessionIDs()
-
-        if (ids.length === 0) return
-        home.organize.org.assignFolderMany(ids, folder.id)
-        home.organize.setDraggingSessionIDs([])
-        showToast({
-          variant: "success",
-          icon: "circle-check",
-          title:
-            ids.length === 1
-              ? language.t("toast.session.movedFolder.title", { folder: folder.name })
-              : language.plural("toast.session.bulkMovedFolder", ids.length, { folder: folder.name }),
-        })
-      },
-      folderCount: (folderID: string) => {
-        let count = 0
-
-        for (const entry of Object.values(home.organize.org.store.sessions)) {
-          if (entry?.folderID === folderID && !(entry.archivedAt && entry.archivedAt > 0)) count++
-        }
-
-        return count
-      },
-      tags: () => home.organize.org.allTags(),
-      selectedTag: home.organize.tag,
-      selectTag: (tag: string) => home.organize.setTag(tag),
-      tagColor: (tag: string) => home.organize.org.tagColor(tag),
-      colors: ORGANIZE_COLORS,
     },
     utility: {
       settings: openSettings,

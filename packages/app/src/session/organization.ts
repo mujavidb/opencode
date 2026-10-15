@@ -17,6 +17,7 @@ export const SessionFolderSchema = Persistence.struct({
   id: Schema.String,
   name: Schema.String,
   color: Persistence.fallback(OrganizeColorSchema, () => "blue" as const),
+  collapsed: Persistence.optional(Schema.Boolean),
   createdAt: Persistence.fallback(Schema.Finite, () => 0),
 })
 
@@ -28,6 +29,9 @@ export const SessionOrgEntrySchema = Persistence.struct({
   folderID: Persistence.optional(Schema.String),
   projectDirectory: Persistence.optional(Schema.String),
   tags: Persistence.optional(Persistence.array(Schema.String)),
+  title: Persistence.optional(Schema.String),
+  server: Persistence.optional(Schema.String),
+  directory: Persistence.optional(Schema.String),
 })
 
 export type SessionOrgEntry = typeof SessionOrgEntrySchema.Type
@@ -45,6 +49,7 @@ export const SessionOrganizationSchema = Persistence.struct({
   sessions: Persistence.record(SessionOrgEntrySchema),
   tagColors: Persistence.record(OrganizeColorSchema),
   groupBy: Persistence.fallback(SessionGroupBySchema, () => "date" as const),
+  archivedExpanded: Persistence.fallback(Schema.Boolean, () => false),
 })
 
 export type SessionOrganizationState = typeof SessionOrganizationSchema.Type
@@ -55,6 +60,7 @@ export function initialSessionOrganization(): SessionOrganizationState {
     sessions: {},
     tagColors: {},
     groupBy: "date",
+    archivedExpanded: false,
   }
 }
 
@@ -212,12 +218,37 @@ function createSessionOrganizationController(persistedStore?: ReturnType<typeof 
     folders: () => store.folders,
     folder: (folderID: string | undefined) =>
       folderID ? store.folders.find((folder) => folder.id === folderID) : undefined,
+    archivedExpanded: () => store.archivedExpanded,
+    setArchivedExpanded(expanded: boolean) {
+      setStore("archivedExpanded", expanded)
+    },
+    toggleArchivedExpanded() {
+      setStore("archivedExpanded", !store.archivedExpanded)
+    },
+    isFolderCollapsed(folderID: string) {
+      return !!store.folders.find((item) => item.id === folderID)?.collapsed
+    },
+    toggleFolderCollapsed(folderID: string) {
+      const index = store.folders.findIndex((item) => item.id === folderID)
+
+      if (index === -1) return
+      setStore("folders", index, "collapsed", !store.folders[index]?.collapsed)
+    },
+    setFolderCollapsed(folderID: string, collapsed: boolean) {
+      const index = store.folders.findIndex((item) => item.id === folderID)
+
+      if (index === -1) return
+      setStore("folders", index, "collapsed", collapsed)
+    },
     groupBy: () => store.groupBy,
     setGroupBy(groupBy: SessionGroupBy) {
       setStore("groupBy", groupBy)
     },
-    isArchived(session: Pick<SessionInfo, "id" | "time">) {
+    isArchived(session: Pick<SessionInfo, "id" | "time"> & { metadata?: SessionInfo["metadata"] }) {
       return isSessionArchived(store, session)
+    },
+    isArchivedID(sessionID: string) {
+      return (store.sessions[sessionID]?.archivedAt ?? 0) > 0
     },
     isPinned(sessionID: string) {
       return isSessionPinned(store, sessionID)
@@ -249,11 +280,31 @@ function createSessionOrganizationController(persistedStore?: ReturnType<typeof 
     projectOverride(sessionID: string) {
       return store.sessions[sessionID]?.projectDirectory
     },
-    archive(sessionID: string) {
+    rememberChatInfo(input: { id: string; title?: string; server?: string; directory?: string }) {
+      setStore(
+        produce((draft) => {
+          const entry = ensureEntry(draft, input.id)
+
+          if (input.title) entry.title = input.title
+
+          if (input.server) entry.server = input.server
+
+          if (input.directory) entry.directory = input.directory
+        }),
+      )
+    },
+    archive(sessionID: string, details?: { title?: string; server?: string; directory?: string }) {
       const now = Date.now()
       setStore(
         produce((draft) => {
-          ensureEntry(draft, sessionID).archivedAt = now
+          const entry = ensureEntry(draft, sessionID)
+          entry.archivedAt = now
+
+          if (details?.title) entry.title = details.title
+
+          if (details?.server) entry.server = details.server
+
+          if (details?.directory) entry.directory = details.directory
         }),
       )
     },
@@ -272,6 +323,55 @@ function createSessionOrganizationController(persistedStore?: ReturnType<typeof 
       setStore(
         produce((draft) => {
           ensureEntry(draft, sessionID).archivedAt = 0
+        }),
+      )
+
+      return store.sessions[sessionID]
+    },
+    removeArchived(sessionID: string) {
+      setStore(
+        produce((draft) => {
+          delete draft.sessions[sessionID]
+        }),
+      )
+    },
+    archivedChats() {
+      return Object.entries(store.sessions)
+        .flatMap(([id, entry]) => {
+          if (!entry?.archivedAt || entry.archivedAt <= 0) return []
+          const folder = entry.folderID ? store.folders.find((item) => item.id === entry.folderID) : undefined
+
+          return [
+            {
+              id,
+              archivedAt: entry.archivedAt,
+              title: entry.title,
+              server: entry.server,
+              directory: entry.directory,
+              folder,
+            },
+          ]
+        })
+        .toSorted((a, b) => b.archivedAt - a.archivedAt)
+    },
+    transferDraft(draftID: string, sessionID: string) {
+      const draftKey = `draft:${draftID}`
+      const source = store.sessions[draftKey]
+
+      if (!source) return
+      setStore(
+        produce((draft) => {
+          const from = draft.sessions[draftKey]
+
+          if (!from) return
+          const target = ensureEntry(draft, sessionID)
+
+          if (from.folderID && !target.folderID) target.folderID = from.folderID
+
+          if (from.pinnedAt && !target.pinnedAt) target.pinnedAt = from.pinnedAt
+
+          if (from.tags && (!target.tags || target.tags.length === 0)) target.tags = [...from.tags]
+          delete draft.sessions[draftKey]
         }),
       )
     },

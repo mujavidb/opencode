@@ -1,5 +1,4 @@
 import type { SessionInfo, SessionsResponse } from "@opencode/client/promise"
-import { Predicate } from "effect"
 import { pathKey } from "@/workspaces/path-key"
 import { SESSION_RECENT_LIMIT, SESSION_RECENT_WINDOW } from "@/runtime/server/global-sync/types"
 
@@ -25,7 +24,6 @@ export async function loadHomeSessionIndex(
     options: { signal?: AbortSignal },
   ) => Promise<SessionsResponse>,
   signal?: AbortSignal,
-  options?: { includeArchived?: boolean },
 ) {
   const now = Date.now()
   let retained: SessionInfo[] = []
@@ -45,11 +43,7 @@ export async function loadHomeSessionIndex(
     // Fold each page in as it arrives: pages are newest first, so later pages
     // can only fill directories that still have room. Peak allocation is one
     // page plus the retained subset, not the whole history.
-    retained = retainHomeSessions(
-      [...retained, ...parseHomeSessionIndex(response.data, options)],
-      HOME_SESSION_INDEX_LIMIT,
-      now,
-    )
+    retained = retainHomeSessions([...retained, ...parseHomeSessionIndex(response.data)], HOME_SESSION_INDEX_LIMIT, now)
 
     if (response.data.length < HOME_V2_SESSION_PAGE_LIMIT || !response.cursor.next) return retained
     cursor = response.cursor.next
@@ -57,21 +51,14 @@ export async function loadHomeSessionIndex(
 }
 
 // Keep this filter for locally known sessions merged into the fetched index.
-export function parseHomeSessionIndex(sessions: SessionInfo[], options?: { includeArchived?: boolean }) {
-  return sessions.filter(
-    (session) => !session.parentID && (options?.includeArchived || !Predicate.isNumber(session.time.archived)),
-  )
+export function parseHomeSessionIndex(sessions: SessionInfo[]) {
+  return sessions.filter((session) => !session.parentID && typeof session.time.archived !== "number")
 }
 
-export function mergeHomeSessionIndex(
-  fetched: SessionInfo[],
-  known: SessionInfo[],
-  options?: { includeArchived?: boolean },
-) {
-  return parseHomeSessionIndex(
-    [...new Map([...fetched, ...known].map((session) => [session.id, session] as const)).values()],
-    options,
-  )
+export function mergeHomeSessionIndex(fetched: SessionInfo[], known: SessionInfo[]) {
+  return parseHomeSessionIndex([
+    ...new Map([...fetched, ...known].map((session) => [session.id, session] as const)).values(),
+  ])
 }
 
 export function retainHomeSessions(sessions: SessionInfo[], limit: number, now: number) {

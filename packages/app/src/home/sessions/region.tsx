@@ -15,8 +15,6 @@ export function HomeSessions(props: {
         <HomeSessionsView
           language={props.sessions.copy.language}
           groups={props.sessions.data.groups()}
-          counts={props.sessions.data.counts()}
-          organize={props.sessions.organize}
           loading={props.sessions.data.loading()}
           desktop={props.sessions.platform.desktop}
           location={props.sessions.location.value}

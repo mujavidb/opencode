@@ -6,6 +6,11 @@ import { Accessibility, AutoScroller, Feedback, PointerActivationConstraints } f
 import { RestrictToHorizontalAxis, RestrictToVerticalAxis } from "@dnd-kit/abstract/modifiers"
 import { RestrictToElement } from "@dnd-kit/dom/modifiers"
 import { arrayMove } from "@dnd-kit/helpers"
+import { Icon } from "@opencode/ui/icon"
+import { IconButton } from "@opencode/ui/icon-button"
+import { InlineInput } from "@opencode/ui/inline-input"
+import { Menu } from "@opencode/ui/menu"
+import { Tooltip } from "@opencode/ui/tooltip"
 import { tabHref, tabKey, type SessionTab, type Tab } from "@/shell/tabs/tabs"
 import { ServerConnection } from "@/runtime/server/registry"
 import { DraftTabItem, TabNavItem } from "@/shell/titlebar/tab-nav"
@@ -14,10 +19,20 @@ import { useLanguage } from "@/runtime/i18n/language"
 import { useCommand } from "@/shell/commands/command"
 import { useTabs } from "@/shell/tabs/tabs"
 import { createTabComposerState } from "@/composer/persistence"
+import {
+  ORGANIZE_COLORS,
+  ORGANIZE_COLOR_STYLES,
+  useSessionOrganization,
+  type OrganizeColor,
+} from "@/session/organization"
 import { base64Encode } from "@opencode/util/encode"
 import { showToast } from "@/shell/notifications/toast"
 import { adjacentTabKey, mergeVisibleTabOrder } from "./tab-order"
 import type { SessionInfo } from "@opencode/client/promise"
+
+function chatKeyOfTab(tab: Tab) {
+  return tab.type === "session" ? tab.sessionId : `draft:${tab.draftID}`
+}
 
 function SessionTabSlot(props: {
   tab: SessionTab
@@ -31,6 +46,7 @@ function SessionTabSlot(props: {
   onRename: (title: string) => Promise<void>
   onNavigate: (element: HTMLDivElement) => void
   onClose: () => void
+  onArchive?: () => void
 }) {
   const sortable = useSortable({
     get id() {
@@ -62,12 +78,14 @@ function SessionTabSlot(props: {
         }}
         href={tabHref(props.tab)}
         server={props.tab.server}
+        sessionID={props.tab.sessionId}
         session={props.session}
         preparing={props.preparing}
         fallbackTitle={props.fallbackTitle}
-        onRename={props.onRename}
+        onRename={rename => props.onRename(rename)}
         onNavigate={() => props.onNavigate(ref)}
         onClose={props.onClose}
+        onArchive={props.onArchive}
         active={props.active}
         dragging={sortable.isDragSource()}
         orientation={props.orientation}
@@ -86,9 +104,11 @@ function SessionTabEntry(props: {
   onVisibleChange: (visible: boolean) => void
   onNavigate: (element: HTMLDivElement) => void
   onClose: () => void
+  onArchive?: () => void
 }) {
   const tabs = useTabs()
   const language = useLanguage()
+  const org = useSessionOrganization()
   const sdk = createMemo(() => props.serverCtx?.sdk ?? null)
   const pending = createMemo(() => tabs.pendingSession(props.tab.server, props.tab.sessionId))
   const cachedSession = createMemo(() => props.serverCtx?.data.session.get(props.tab.sessionId))
@@ -110,7 +130,11 @@ function SessionTabEntry(props: {
 
   const session = createMemo(() => (pending() ? undefined : (cachedSession() ?? loadedSession())))
   const missingSession = createMemo(() => !pending() && !!props.serverCtx && !loadedSession.loading && !session())
-  const visible = createMemo(() => !!pending() || !!session() || missingSession() || !!persisted()?.title)
+  const isArchived = createMemo(() => org.isArchivedID(props.tab.sessionId))
+
+  const visible = createMemo(
+    () => !isArchived() && (!!pending() || !!session() || missingSession() || !!persisted()?.title),
+  )
 
   const rename = async (title: string) => {
     const value = session()
@@ -194,6 +218,7 @@ function SessionTabEntry(props: {
         onRename={rename}
         onNavigate={props.onNavigate}
         onClose={props.onClose}
+        onArchive={props.onArchive}
       />
     </Show>
   )
@@ -237,6 +262,7 @@ function DraftTabSlot(props: {
         ref={(el) => {
           ref = el
         }}
+        draftID={props.tab.draftID}
         href={tabHref(props.tab)}
         title={props.title}
         onNavigate={() => props.onNavigate(ref)}
@@ -255,16 +281,78 @@ export function TitlebarTabStrip(props: {
   currentTab: Tab | undefined
   onNavigate: (tab: Tab, el?: HTMLDivElement) => void
   onClose: (tab: Tab) => void
+  onArchive?: (tab: Tab) => void
+  onNewTabInProject?: (folderID?: string) => void
   onReorder: (keys: string[]) => void
 }) {
   const global = useGlobal()
   const language = useLanguage()
   const command = useCommand()
+  const org = useSessionOrganization()
   const vertical = () => props.orientation === "vertical"
   let listRef!: HTMLDivElement
   const [visibility, setVisibility] = createStore<Record<string, boolean>>({})
-  const visibleTabs = createMemo(() => props.tabs.filter((tab) => tab.type === "draft" || visibility[tabKey(tab)]))
+
+  const visibleTabs = createMemo(() =>
+    props.tabs.filter(
+      (tab) => !org.isArchivedID(chatKeyOfTab(tab)) && (tab.type === "draft" || visibility[tabKey(tab)]),
+    ),
+  )
+
   const visibleTabIds = () => visibleTabs().map(tabKey)
+
+  const unassignedTabs = createMemo(() =>
+    vertical() ? props.tabs.filter((tab) => !org.folderID(chatKeyOfTab(tab))) : props.tabs,
+  )
+
+  const renderTabItem = (tab: Tab) => {
+    const id = tabKey(tab)
+    let ref!: HTMLDivElement
+    const visibleIndex = () => visibleTabs().findIndex((item) => tabKey(item) === id)
+    useTabShortcut(visibleIndex, () => props.onNavigate(tab, ref))
+
+    const serverCtx = useServerCtx(() => {
+      if (tab.type !== "session") return
+
+      return global.servers.list().find((item) => ServerConnection.key(item) === tab.server)
+    })
+
+    if (tab.type === "session") {
+      return (
+        <SessionTabEntry
+          tab={tab}
+          id={id}
+          index={visibleIndex()}
+          active={props.currentTab === tab}
+          orientation={vertical() ? "vertical" : "horizontal"}
+          serverCtx={serverCtx()}
+          onVisibleChange={(visible) => setVisibility(id, visible)}
+          onNavigate={(element) => {
+            ref = element
+            props.onNavigate(tab, element)
+          }}
+          onClose={() => props.onClose(tab)}
+          onArchive={() => (props.onArchive ? props.onArchive(tab) : props.onClose(tab))}
+        />
+      )
+    }
+
+    return (
+      <DraftTabSlot
+        tab={tab}
+        id={id}
+        index={visibleIndex()}
+        active={props.currentTab === tab}
+        orientation={vertical() ? "vertical" : "horizontal"}
+        title={language.t("session.tab.session")}
+        onNavigate={(element) => {
+          ref = element
+          props.onNavigate(tab, element)
+        }}
+        onClose={() => props.onClose(tab)}
+      />
+    )
+  }
 
   command.register("titlebar-tab-cycle", () => [
     {
@@ -298,14 +386,14 @@ export function TitlebarTabStrip(props: {
       data-slot={vertical() ? "vertical-tabs" : "titlebar-tabs"}
       data-orientation={vertical() ? "vertical" : "horizontal"}
       class="relative min-w-0"
-      classList={{ "min-h-0 overflow-hidden": vertical() }}
+      classList={{ "flex flex-1 min-h-0 flex-col overflow-hidden": vertical() }}
     >
       <div
         data-slot={vertical() ? "vertical-tabs-scroll" : "titlebar-tabs-scroll"}
         class="flex min-w-0 no-scrollbar [app-region:no-drag]"
         classList={{
           "flex-row items-center gap-1.5 overflow-x-auto": !vertical(),
-          "max-h-full flex-col overflow-y-auto overflow-x-hidden": vertical(),
+          "flex-1 min-h-0 flex-col overflow-y-auto overflow-x-hidden": vertical(),
         }}
       >
         <DragDropProvider
@@ -317,7 +405,7 @@ export function TitlebarTabStrip(props: {
                   : [new PointerActivationConstraints.Distance({ value: 4 })],
               preventActivation: (event) =>
                 event.target instanceof Element &&
-                !!event.target.closest('[data-slot="tab-close"], [contenteditable="true"]'),
+                !!event.target.closest('[data-slot="tab-close"], [contenteditable="true"], [data-sidebar-project-row]'),
             }),
           ]}
           modifiers={[
@@ -367,58 +455,40 @@ export function TitlebarTabStrip(props: {
             classList={{ "flex-row items-center": !vertical(), "flex-col items-stretch": vertical() }}
             ref={listRef}
           >
-            <For each={props.tabs}>
-              {(tab) => {
-                const id = tabKey(tab)
-                let ref!: HTMLDivElement
-                const visibleIndex = () => visibleTabs().findIndex((item) => tabKey(item) === id)
-                useTabShortcut(visibleIndex, () => props.onNavigate(tab, ref))
-
-                const serverCtx = useServerCtx(() => {
-                  if (tab.type !== "session") return
-
-                  return global.servers.list().find((item) => ServerConnection.key(item) === tab.server)
-                })
-
-                if (tab.type === "session") {
-                  return (
-                    <SessionTabEntry
-                      tab={tab}
-                      id={id}
-                      index={visibleIndex()}
-                      active={props.currentTab === tab}
-                      orientation={vertical() ? "vertical" : "horizontal"}
-                      serverCtx={serverCtx()}
-                      onVisibleChange={(visible) => setVisibility(id, visible)}
-                      onNavigate={(element) => {
-                        ref = element
-                        props.onNavigate(tab, element)
-                      }}
-                      onClose={() => props.onClose(tab)}
-                    />
-                  )
-                }
-
-                return (
-                  <DraftTabSlot
-                    tab={tab}
-                    id={id}
-                    index={visibleIndex()}
-                    active={props.currentTab === tab}
-                    orientation={vertical() ? "vertical" : "horizontal"}
-                    title={language.t("session.tab.session")}
-                    onNavigate={(element) => {
-                      ref = element
-                      props.onNavigate(tab, element)
-                    }}
-                    onClose={() => props.onClose(tab)}
-                  />
-                )
-              }}
-            </For>
+            <Show when={vertical()}>
+              <VerticalSidebarProjects
+                tabs={props.tabs}
+                renderTab={renderTabItem}
+                onNewTabInProject={(folderID) => props.onNewTabInProject?.(folderID)}
+              />
+            </Show>
+            <Show when={vertical() && org.folders().length > 0}>
+              <div class="mt-2 mb-0.5 flex h-6 items-center justify-between px-1.5">
+                <span class="text-[11px] leading-4 text-v2-text-text-faint [font-weight:530]">
+                  {language.t("sidebar.chats")}
+                </span>
+                <Show when={props.onNewTabInProject}>
+                  {(create) => (
+                    <Tooltip placement="right" value={language.t("command.session.new")}>
+                      <IconButton
+                        size="small"
+                        variant="ghost-muted"
+                        icon={<Icon name="plus" size="small" />}
+                        aria-label={language.t("command.session.new")}
+                        onClick={() => create()(undefined)}
+                      />
+                    </Tooltip>
+                  )}
+                </Show>
+              </div>
+            </Show>
+            <For each={unassignedTabs()}>{(tab) => renderTabItem(tab)}</For>
           </div>
         </DragDropProvider>
       </div>
+      <Show when={vertical()}>
+        <VerticalSidebarArchived />
+      </Show>
       <Show when={!vertical()}>
         <div
           data-slot="titlebar-tabs-fade-left"
@@ -430,6 +500,453 @@ export function TitlebarTabStrip(props: {
           aria-hidden="true"
           class="pointer-events-none absolute inset-y-0 right-0 z-10 w-6 bg-[linear-gradient(to_left,var(--v2-background-bg-deep),transparent)]"
         />
+      </Show>
+    </div>
+  )
+}
+
+function VerticalSidebarProjects(props: {
+  tabs: Tab[]
+  renderTab: (tab: Tab) => ReturnType<typeof SessionTabEntry>
+  onNewTabInProject: (folderID: string) => void
+}) {
+  const language = useLanguage()
+  const org = useSessionOrganization()
+  let creatorInputRef: HTMLInputElement | undefined
+
+  const [state, setState] = createStore<{
+    creating: boolean
+    newName: string
+    newColor: OrganizeColor
+    editingID: string | undefined
+    editDraft: string
+    menuID: string | undefined
+  }>({
+    creating: false,
+    newName: "",
+    newColor: "blue",
+    editingID: undefined,
+    editDraft: "",
+    menuID: undefined,
+  })
+
+  const openCreator = () => {
+    setState({
+      creating: true,
+      newName: "",
+      newColor: ORGANIZE_COLORS[org.folders().length % ORGANIZE_COLORS.length],
+    })
+    requestAnimationFrame(() => creatorInputRef?.focus())
+  }
+
+  const submitCreator = () => {
+    const folder = org.createFolder(state.newName, state.newColor)
+    setState({ creating: false, newName: "" })
+
+    if (folder) org.setFolderCollapsed(folder.id, false)
+  }
+
+  const cycleColor = () => {
+    const idx = ORGANIZE_COLORS.indexOf(state.newColor)
+    setState("newColor", ORGANIZE_COLORS[(idx + 1) % ORGANIZE_COLORS.length])
+  }
+
+  return (
+    <div data-slot="vertical-sidebar-projects" class="mb-1 flex flex-col gap-0.5">
+      <div class="flex h-6 items-center justify-between px-1.5">
+        <span class="text-[11px] leading-4 text-v2-text-text-faint [font-weight:530]">
+          {language.t("sidebar.projects")}
+        </span>
+        <Tooltip placement="right" value={language.t("sidebar.projects.new")}>
+          <IconButton
+            data-action="sidebar-new-project"
+            size="small"
+            variant="ghost-muted"
+            icon={<Icon name="plus" size="small" />}
+            aria-label={language.t("sidebar.projects.new")}
+            onClick={openCreator}
+          />
+        </Tooltip>
+      </div>
+
+      <Show when={state.creating}>
+        <div
+          data-sidebar-project-row
+          class="flex h-7 items-center gap-1.5 rounded-[6px] bg-v2-background-bg-layer-02 px-1.5"
+        >
+          <button
+            type="button"
+            aria-label={language.t("sidebar.projects.color")}
+            class="flex size-4 shrink-0 items-center justify-center rounded-[4px] hover:bg-v2-background-bg-layer-03"
+            onClick={cycleColor}
+          >
+            <span class={`size-2.5 rounded-full ${ORGANIZE_COLOR_STYLES[state.newColor].dot}`} />
+          </button>
+          <input
+            ref={(el) => (creatorInputRef = el)}
+            value={state.newName}
+            placeholder={language.t("sidebar.projects.newPlaceholder")}
+            aria-label={language.t("sidebar.projects.newPlaceholder")}
+            class="min-w-0 flex-1 border-0 bg-transparent text-[13px] leading-4 text-v2-text-text-base outline-0 placeholder:text-v2-text-text-faint"
+            onInput={(event) => setState("newName", event.currentTarget.value)}
+            onKeyDown={(event) => {
+              event.stopPropagation()
+
+              if (event.key === "Enter" && !event.isComposing) {
+                event.preventDefault()
+                submitCreator()
+
+                return
+              }
+
+              if (event.key === "Escape") {
+                event.preventDefault()
+                setState({ creating: false, newName: "" })
+              }
+            }}
+            onBlur={() => {
+              if (state.newName.trim()) {
+                submitCreator()
+
+                return
+              }
+
+              setState({ creating: false, newName: "" })
+            }}
+          />
+        </div>
+      </Show>
+
+      <For each={org.folders()}>
+        {(folder) => {
+          const projectTabs = createMemo(() =>
+            props.tabs.filter(
+              (tab) =>
+                !org.isArchivedID(chatKeyOfTab(tab)) && org.folderID(chatKeyOfTab(tab)) === folder.id,
+            ),
+          )
+
+          const collapsed = () => org.isFolderCollapsed(folder.id)
+          const editing = () => state.editingID === folder.id
+          const menuOpen = () => state.menuID === folder.id
+
+          const saveEdit = () => {
+            if (state.editingID !== folder.id) return
+            org.renameFolder(folder.id, state.editDraft)
+            setState("editingID", undefined)
+          }
+
+          return (
+            <div class="flex flex-col">
+              <div
+                data-sidebar-project-row
+                data-sidebar-project-id={folder.id}
+                class="group/sproj relative flex h-7 w-full min-w-0 items-center rounded-[6px] px-1 hover:bg-v2-background-bg-layer-02/70"
+                onContextMenu={(event) => {
+                  if (editing()) return
+                  event.preventDefault()
+                  setState("menuID", folder.id)
+                }}
+              >
+                <Show
+                  when={!editing()}
+                  fallback={
+                    <div class="flex h-7 w-full items-center gap-1.5 px-1">
+                      <span class={`size-2 shrink-0 rounded-full ${ORGANIZE_COLOR_STYLES[folder.color].dot}`} />
+                      <InlineInput
+                        aria-label={language.t("sidebar.projects.rename")}
+                        value={state.editDraft}
+                        class="min-w-0 flex-1 text-[13px] leading-4 text-v2-text-text-base outline-none"
+                        onInput={(event) => setState("editDraft", event.currentTarget.value)}
+                        onKeyDown={(event) => {
+                          event.stopPropagation()
+
+                          if (event.key === "Enter") {
+                            event.preventDefault()
+                            saveEdit()
+
+                            return
+                          }
+
+                          if (event.key === "Escape") {
+                            event.preventDefault()
+                            setState("editingID", undefined)
+                          }
+                        }}
+                        onBlur={saveEdit}
+                      />
+                    </div>
+                  }
+                >
+                  <button
+                    type="button"
+                    data-action="sidebar-project-toggle"
+                    aria-expanded={!collapsed()}
+                    class="flex h-full min-w-0 flex-1 items-center gap-1.5 text-start text-[13px] leading-4 text-v2-text-text-base [font-weight:500]"
+                    onClick={() => org.toggleFolderCollapsed(folder.id)}
+                    onDblClick={(event) => {
+                      event.preventDefault()
+                      event.stopPropagation()
+                      setState({ editingID: folder.id, editDraft: folder.name })
+                    }}
+                  >
+                    <Icon
+                      name="chevron-down"
+                      size="small"
+                      class="shrink-0 text-v2-icon-icon-muted transition-transform duration-150"
+                      style={{ transform: `rotate(${collapsed() ? -90 : 0}deg)` }}
+                    />
+                    <span class={`size-2 shrink-0 rounded-full ${ORGANIZE_COLOR_STYLES[folder.color].dot}`} />
+                    <span class="min-w-0 flex-1 truncate">{folder.name}</span>
+                    <Show when={projectTabs().length > 0}>
+                      <span class="shrink-0 pe-1 text-[11px] leading-4 text-v2-text-text-faint group-hover/sproj:opacity-0">
+                        {projectTabs().length}
+                      </span>
+                    </Show>
+                  </button>
+                </Show>
+
+                <Show when={!editing()}>
+                  <div
+                    class="hover-reveal absolute end-1 top-1/2 flex -translate-y-1/2 items-center gap-0.5 group-hover/sproj:opacity-100 data-[menu=true]:opacity-100"
+                    data-menu={menuOpen()}
+                  >
+                    <Tooltip placement="top" value={language.t("sidebar.projects.newChat")}>
+                      <IconButton
+                        data-action="sidebar-project-new-chat"
+                        size="small"
+                        variant="ghost-muted"
+                        icon={<Icon name="plus" size="small" />}
+                        aria-label={language.t("sidebar.projects.newChat")}
+                        onClick={(event) => {
+                          event.preventDefault()
+                          event.stopPropagation()
+                          org.setFolderCollapsed(folder.id, false)
+                          props.onNewTabInProject(folder.id)
+                        }}
+                      />
+                    </Tooltip>
+                    <Menu
+                      modal={false}
+                      placement="bottom-end"
+                      gutter={4}
+                      open={menuOpen()}
+                      onOpenChange={(open) => setState("menuID", open ? folder.id : undefined)}
+                    >
+                      <Menu.Trigger
+                        as={IconButton}
+                        size="small"
+                        variant="ghost-muted"
+                        icon={<Icon name="outline-dots" size="small" />}
+                        aria-label={language.t("common.moreOptions")}
+                      />
+                      <Menu.Portal>
+                        <Menu.Content>
+                          <Menu.Item
+                            onSelect={() => {
+                              org.setFolderCollapsed(folder.id, false)
+                              props.onNewTabInProject(folder.id)
+                            }}
+                          >
+                            {language.t("sidebar.projects.newChat")}
+                          </Menu.Item>
+                          <Menu.Item
+                            onSelect={() => setState({ editingID: folder.id, editDraft: folder.name })}
+                          >
+                            {language.t("common.rename")}
+                          </Menu.Item>
+                          <Menu.Sub>
+                            <Menu.SubTrigger>{language.t("sidebar.projects.color")}</Menu.SubTrigger>
+                            <Menu.Portal>
+                              <Menu.SubContent>
+                                <For each={ORGANIZE_COLORS}>
+                                  {(color) => (
+                                    <Menu.CheckboxItem
+                                      checked={folder.color === color}
+                                      onChange={() => org.setFolderColor(folder.id, color)}
+                                    >
+                                      <span class="flex items-center gap-2">
+                                        <span class={`size-2.5 rounded-full ${ORGANIZE_COLOR_STYLES[color].dot}`} />
+                                        <span>{language.t(`common.color.${color}`)}</span>
+                                      </span>
+                                    </Menu.CheckboxItem>
+                                  )}
+                                </For>
+                              </Menu.SubContent>
+                            </Menu.Portal>
+                          </Menu.Sub>
+                          <Menu.Separator />
+                          <Menu.Item onSelect={() => org.deleteFolder(folder.id)}>
+                            {language.t("common.delete")}
+                          </Menu.Item>
+                        </Menu.Content>
+                      </Menu.Portal>
+                    </Menu>
+                  </div>
+                </Show>
+              </div>
+
+              <Show when={!collapsed() && projectTabs().length > 0}>
+                <div class="ms-2.5 flex flex-col border-s border-v2-border-border-base/60 ps-1.5">
+                  <For each={projectTabs()}>{(tab) => props.renderTab(tab)}</For>
+                </div>
+              </Show>
+            </div>
+          )
+        }}
+      </For>
+    </div>
+  )
+}
+
+function VerticalSidebarArchived() {
+  const language = useLanguage()
+  const org = useSessionOrganization()
+  const tabs = useTabs()
+  const global = useGlobal()
+
+  const archivedList = createMemo(() => org.archivedChats())
+
+  const restoreAndOpen = (item: { id: string; server?: string; directory?: string }, navigate: boolean) => {
+    org.unarchive(item.id)
+    const fallbackServer = global.servers.list()[0] ? ServerConnection.key(global.servers.list()[0]) : undefined
+    const serverKey = (item.server ? ServerConnection.Key.make(item.server) : undefined) ?? fallbackServer
+
+    if (!serverKey) return
+    const tab = tabs.addSessionTab({ server: serverKey, sessionId: item.id })
+
+    if (navigate) tabs.select(tab)
+  }
+
+  return (
+    <div
+      data-slot="vertical-sidebar-archived"
+      class="mt-2 flex w-full shrink-0 flex-col border-t border-v2-border-border-muted/60 pt-1.5 [app-region:no-drag]"
+    >
+      <button
+        type="button"
+        data-action="vertical-sidebar-archived-toggle"
+        aria-expanded={org.archivedExpanded()}
+        class="flex h-7 w-full items-center gap-1.5 rounded-[6px] px-1.5 text-[13px] leading-4 text-v2-text-text-faint hover:bg-v2-background-bg-layer-02 hover:text-v2-text-text-base"
+        onClick={() => org.toggleArchivedExpanded()}
+      >
+        <Icon
+          name="chevron-down"
+          size="small"
+          class="shrink-0 transition-transform duration-150"
+          style={{ transform: `rotate(${org.archivedExpanded() ? 0 : -90}deg)` }}
+        />
+        <Icon name="archive" size="small" class="shrink-0" />
+        <span class="min-w-0 flex-1 truncate text-start">{language.t("sidebar.archived")}</span>
+        <Show when={archivedList().length > 0}>
+          <span class="shrink-0 text-[11px] leading-4 text-v2-text-text-faint">{archivedList().length}</span>
+        </Show>
+      </button>
+
+      <Show when={org.archivedExpanded()}>
+        <div class="mt-0.5 flex max-h-48 flex-col gap-0.5 overflow-y-auto ps-1">
+          <Show
+            when={archivedList().length > 0}
+            fallback={
+              <div class="px-2 py-1.5 text-[12px] leading-4 text-v2-text-text-faint">
+                {language.t("sidebar.archived.empty")}
+              </div>
+            }
+          >
+            <For each={archivedList()}>
+              {(item) => (
+                <Menu.Context modal={false}>
+                  <div
+                    data-slot="vertical-sidebar-archived-item"
+                    class="group/arch relative flex h-7 w-full min-w-0 items-center gap-1.5 rounded-[6px] px-1.5 hover:bg-v2-background-bg-layer-02"
+                  >
+                    <Menu.Context.Trigger
+                      as="button"
+                      type="button"
+                      class="flex h-full min-w-0 flex-1 items-center gap-1.5 text-start text-[13px] leading-4 text-v2-text-text-muted hover:text-v2-text-text-base"
+                      onClick={() => restoreAndOpen(item, true)}
+                    >
+                      <span class="min-w-0 flex-1 truncate">
+                        {item.title ?? language.t("session.tab.session")}
+                      </span>
+                      <Show when={item.folder}>
+                        {(folder) => (
+                          <span
+                            class={`inline-flex h-4 max-w-20 shrink-0 items-center gap-1 rounded-[4px] border px-1 text-[10px] leading-4 ${ORGANIZE_COLOR_STYLES[folder().color].pill}`}
+                          >
+                            <span
+                              class={`size-1.5 shrink-0 rounded-full ${ORGANIZE_COLOR_STYLES[folder().color].dot}`}
+                            />
+                            <span class="truncate">{folder().name}</span>
+                          </span>
+                        )}
+                      </Show>
+                    </Menu.Context.Trigger>
+                    <div class="hover-reveal flex shrink-0 items-center gap-0.5 group-hover/arch:opacity-100">
+                      <Tooltip placement="top" value={language.t("session.organize.unarchive")}>
+                        <IconButton
+                          size="small"
+                          variant="ghost-muted"
+                          data-action="sidebar-unarchive-chat"
+                          icon={<Icon name="archive-restore" size="small" />}
+                          aria-label={language.t("session.organize.unarchive")}
+                          onClick={(event) => {
+                            event.preventDefault()
+                            event.stopPropagation()
+                            restoreAndOpen(item, false)
+                          }}
+                        />
+                      </Tooltip>
+                    </div>
+                  </div>
+                  <Menu.Context.Portal>
+                    <Menu.Context.Content>
+                      <Menu.Item onSelect={() => restoreAndOpen(item, true)}>
+                        {language.t("session.organize.unarchive")}
+                      </Menu.Item>
+                      <Menu.Sub>
+                        <Menu.SubTrigger>{language.t("sidebar.projects.assign")}</Menu.SubTrigger>
+                        <Menu.Portal>
+                          <Menu.SubContent class="max-h-72 overflow-y-auto">
+                            <For each={org.folders()}>
+                              {(folder) => (
+                                <Menu.CheckboxItem
+                                  checked={item.folder?.id === folder.id}
+                                  onChange={() =>
+                                    org.assignFolder(
+                                      item.id,
+                                      item.folder?.id === folder.id ? undefined : folder.id,
+                                    )
+                                  }
+                                >
+                                  <span class="flex items-center gap-2">
+                                    <span
+                                      class={`size-2 rounded-full ${ORGANIZE_COLOR_STYLES[folder.color].dot}`}
+                                    />
+                                    <span class="max-w-44 truncate">{folder.name}</span>
+                                  </span>
+                                </Menu.CheckboxItem>
+                              )}
+                            </For>
+                            <Show when={item.folder}>
+                              <Menu.Item onSelect={() => org.assignFolder(item.id, undefined)}>
+                                {language.t("sidebar.projects.unassign")}
+                              </Menu.Item>
+                            </Show>
+                          </Menu.SubContent>
+                        </Menu.Portal>
+                      </Menu.Sub>
+                      <Menu.Separator />
+                      <Menu.Item onSelect={() => org.removeArchived(item.id)}>
+                        {language.t("common.delete")}
+                      </Menu.Item>
+                    </Menu.Context.Content>
+                  </Menu.Context.Portal>
+                </Menu.Context>
+              )}
+            </For>
+          </Show>
+        </div>
       </Show>
     </div>
   )

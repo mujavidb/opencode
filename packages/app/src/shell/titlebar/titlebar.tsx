@@ -31,6 +31,7 @@ import { SessionProgressIndicatorV2 } from "@opencode/session-ui/v2/session-prog
 import { RecentlyClosedTabsMenu } from "./recently-closed-tabs-menu"
 import { useSettingsDialog } from "@/settings/command"
 import { rootSession } from "@/shell/routes/session"
+import { useSessionOrganization } from "@/session/organization"
 import { TitlebarItem } from "@opencode/gui-extensions/sdk"
 import { useExtensionHost } from "@/runtime/extension/host"
 import { TitlebarItems, useTitlebarItems } from "@/runtime/extension/titlebar-items"
@@ -181,6 +182,7 @@ export function Titlebar(props: { verticalTabs?: { mount?: HTMLElement } }) {
           {(_) => {
             const layout = useLayout()
             const global = useGlobal()
+            const org = useSessionOrganization()
 
             const tabs = useTabs()
             const tabsStore = tabs.store
@@ -323,7 +325,15 @@ export function Titlebar(props: { verticalTabs?: { mount?: HTMLElement } }) {
               tabsStoreActions.removeSessions(detail)
             })
 
-            const openNewTab = () => {
+            const openNewTab = (folderID?: string) => {
+              const assignIfFolder = (promise: Promise<{ draftID: string }>) => {
+                if (!folderID) return
+                void promise.then((draft) => {
+                  org.assignFolder(`draft:${draft.draftID}`, folderID)
+                  org.setFolderCollapsed(folderID, false)
+                })
+              }
+
               const route = layout.route()
 
               switch (route.type) {
@@ -332,7 +342,7 @@ export function Titlebar(props: { verticalTabs?: { mount?: HTMLElement } }) {
 
                   if (pending) {
                     const model = tabs.stateValue<ComposerState>(pending.draft, "prompt")?.model.current()
-                    void tabs.newDraft({ server: route.server, directory: pending.draft.directory }, "", model)
+                    assignIfFolder(tabs.newDraft({ server: route.server, directory: pending.draft.directory }, "", model))
 
                     return
                   }
@@ -348,10 +358,12 @@ export function Titlebar(props: { verticalTabs?: { mount?: HTMLElement } }) {
                   }
 
                   const model = tabs.stateValue<ComposerState>(sessionTab, "prompt")?.model.current()
-                  void tabs.newDraft(
-                    { server: sessionTab.server, directory: activeSession.location.directory },
-                    "",
-                    model,
+                  assignIfFolder(
+                    tabs.newDraft(
+                      { server: sessionTab.server, directory: activeSession.location.directory },
+                      "",
+                      model,
+                    ),
                   )
 
                   return
@@ -363,7 +375,7 @@ export function Titlebar(props: { verticalTabs?: { mount?: HTMLElement } }) {
                   if (activeTab?.type !== "draft") return
 
                   const model = tabs.stateValue<ComposerState>(activeTab, "prompt")?.model.current()
-                  void tabs.newDraft({ server: activeTab.server, directory: activeTab.directory }, "", model)
+                  assignIfFolder(tabs.newDraft({ server: activeTab.server, directory: activeTab.directory }, "", model))
 
                   return
                 }
@@ -377,15 +389,21 @@ export function Titlebar(props: { verticalTabs?: { mount?: HTMLElement } }) {
                     global.servers.list().find((item) => ServerConnection.key(item) === selection.server) ??
                     global.servers.list()[0]
 
-                  const projects = conn ? global.ensureServerCtx(conn).projects : undefined
+                  const ctx = conn ? global.ensureServerCtx(conn) : undefined
+                  const projects = ctx?.projects
 
                   const project =
                     projects?.list().find((item) => item.worktree === selection.directory) ??
                     projects?.list().find((item) => item.worktree === projects.last()) ??
                     projects?.list()[0]
 
-                  if (conn && project) {
-                    void tabs.newDraft({ server: ServerConnection.key(conn), directory: project.worktree }, "")
+                  const fallbackDir =
+                    project?.worktree ??
+                    ctx?.sync.data.project.find((item) => item.id !== "global" && item.worktree)?.worktree ??
+                    ctx?.sync.data.path.home
+
+                  if (conn && fallbackDir) {
+                    assignIfFolder(tabs.newDraft({ server: ServerConnection.key(conn), directory: fallbackDir }, ""))
 
                     return
                   }
@@ -746,6 +764,12 @@ export function Titlebar(props: { verticalTabs?: { mount?: HTMLElement } }) {
 
                                   if (index !== -1) tabsStoreActions.closeTab(index)
                                 }}
+                                onArchive={(tab) => {
+                                  const index = tabsStore.findIndex((item) => tabKey(item) === tabKey(tab))
+
+                                  if (index !== -1) tabsStoreActions.removeTab(index)
+                                }}
+                                onNewTabInProject={(folderID) => openNewTab(folderID)}
                                 onReorder={(keys) => tabsStoreActions.reorder(keys)}
                               />
                             </div>
