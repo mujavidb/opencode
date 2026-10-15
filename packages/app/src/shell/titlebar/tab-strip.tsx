@@ -37,6 +37,7 @@ function chatKeyOfTab(tab: Tab) {
 function SessionTabSlot(props: {
   tab: SessionTab
   id: string
+  group: string
   index: number
   active: boolean
   orientation: "horizontal" | "vertical"
@@ -51,6 +52,9 @@ function SessionTabSlot(props: {
   const sortable = useSortable({
     get id() {
       return props.id
+    },
+    get group() {
+      return props.group
     },
     get index() {
       return props.index
@@ -97,6 +101,7 @@ function SessionTabSlot(props: {
 function SessionTabEntry(props: {
   tab: SessionTab
   id: string
+  group: string
   index: number
   active: boolean
   orientation: "horizontal" | "vertical"
@@ -205,6 +210,7 @@ function SessionTabEntry(props: {
       <SessionTabSlot
         tab={props.tab}
         id={props.id}
+        group={props.group}
         index={props.index}
         active={props.active}
         orientation={props.orientation}
@@ -227,6 +233,7 @@ function SessionTabEntry(props: {
 function DraftTabSlot(props: {
   tab: Extract<Tab, { type: "draft" }>
   id: string
+  group: string
   index: number
   active: boolean
   orientation: "horizontal" | "vertical"
@@ -237,6 +244,9 @@ function DraftTabSlot(props: {
   const sortable = useSortable({
     get id() {
       return props.id
+    },
+    get group() {
+      return props.group
     },
     get index() {
       return props.index
@@ -292,6 +302,9 @@ export function TitlebarTabStrip(props: {
   const vertical = () => props.orientation === "vertical"
   let listRef!: HTMLDivElement
   const [visibility, setVisibility] = createStore<Record<string, boolean>>({})
+  const [dragDrop, setDragDrop] = createStore<{ targetFolderID: string | undefined }>({ targetFolderID: undefined })
+  let cleanupDragPointer: (() => void) | undefined
+  onCleanup(() => cleanupDragPointer?.())
 
   const visibleTabs = createMemo(() =>
     props.tabs.filter(
@@ -305,7 +318,7 @@ export function TitlebarTabStrip(props: {
     vertical() ? props.tabs.filter((tab) => !org.folderID(chatKeyOfTab(tab))) : props.tabs,
   )
 
-  const renderTabItem = (tab: Tab) => {
+  const renderTabItem = (tab: Tab, group = "__unassigned__") => {
     const id = tabKey(tab)
     let ref!: HTMLDivElement
     const visibleIndex = () => visibleTabs().findIndex((item) => tabKey(item) === id)
@@ -322,6 +335,7 @@ export function TitlebarTabStrip(props: {
         <SessionTabEntry
           tab={tab}
           id={id}
+          group={group}
           index={visibleIndex()}
           active={props.currentTab === tab}
           orientation={vertical() ? "vertical" : "horizontal"}
@@ -341,6 +355,7 @@ export function TitlebarTabStrip(props: {
       <DraftTabSlot
         tab={tab}
         id={id}
+        group={group}
         index={visibleIndex()}
         active={props.currentTab === tab}
         orientation={vertical() ? "vertical" : "horizontal"}
@@ -418,6 +433,10 @@ export function TitlebarTabStrip(props: {
             Feedback.configure({ dropAnimation: null }),
           ]}
           onDragStart={(event) => {
+            cleanupDragPointer?.()
+            cleanupDragPointer = undefined
+            setDragDrop("targetFolderID", undefined)
+
             const source = event.operation.source
 
             if (!source) return
@@ -425,15 +444,81 @@ export function TitlebarTabStrip(props: {
 
             if (!tab) return
 
-            if (vertical()) return
+            if (vertical()) {
+              const sourceEl = source.element
+              const currentFolder = org.folderID(chatKeyOfTab(tab))
+
+              const handleMove = (pointerEvent: PointerEvent) => {
+                const elements = document.elementsFromPoint(pointerEvent.clientX, pointerEvent.clientY)
+
+                for (const el of elements) {
+                  if (sourceEl && sourceEl.contains(el)) continue
+                  const projEl = el.closest<HTMLElement>("[data-sidebar-project-drop]")
+
+                  if (projEl) {
+                    const folderID = projEl.getAttribute("data-sidebar-project-drop") ?? undefined
+                    setDragDrop("targetFolderID", folderID !== currentFolder ? folderID : undefined)
+
+                    return
+                  }
+
+                  if (currentFolder && el.closest("[data-sidebar-unassigned-drop]")) {
+                    setDragDrop("targetFolderID", "__unassigned__")
+
+                    return
+                  }
+                }
+
+                setDragDrop("targetFolderID", undefined)
+              }
+
+              window.addEventListener("pointermove", handleMove, { passive: true })
+              cleanupDragPointer = () => window.removeEventListener("pointermove", handleMove)
+
+              return
+            }
+
             const tabEl = source.element?.querySelector<HTMLDivElement>("[data-titlebar-tab]")
             props.onNavigate(tab, tabEl ?? undefined)
           }}
+          onDragOver={(event) => {
+            if (!vertical()) return
+            const source = event.operation.source
+            const target = event.operation.target
+
+            if (isSortable(source) && isSortable(target) && source.sortable.group !== target.sortable.group) {
+              event.preventDefault()
+            }
+          }}
           onDragEnd={(event) => {
+            cleanupDragPointer?.()
+            cleanupDragPointer = undefined
+            const targetFolderID = dragDrop.targetFolderID
+            setDragDrop("targetFolderID", undefined)
+
             const current = visibleTabIds()
             const source = event.operation.source
 
             if (event.canceled || !isSortable(source)) return
+
+            if (vertical() && targetFolderID !== undefined) {
+              const draggedTab = props.tabs.find((item) => tabKey(item) === source.id.toString())
+
+              if (draggedTab) {
+                const key = chatKeyOfTab(draggedTab)
+
+                if (targetFolderID === "__unassigned__") {
+                  org.assignFolder(key, undefined)
+                }
+
+                if (targetFolderID !== "__unassigned__") {
+                  org.assignFolder(key, targetFolderID)
+                  org.setFolderCollapsed(targetFolderID, false)
+                }
+
+                return
+              }
+            }
 
             const { initialIndex, index } = source
 
@@ -458,31 +543,23 @@ export function TitlebarTabStrip(props: {
             <Show when={vertical()}>
               <VerticalSidebarProjects
                 tabs={props.tabs}
+                dropTargetFolderID={dragDrop.targetFolderID}
                 renderTab={renderTabItem}
                 onNewTabInProject={(folderID) => props.onNewTabInProject?.(folderID)}
               />
             </Show>
-            <Show when={vertical() && org.folders().length > 0}>
-              <div class="mt-2 mb-0.5 flex h-6 items-center justify-between px-1.5">
-                <span class="text-[11px] leading-4 text-v2-text-text-faint [font-weight:530]">
-                  {language.t("sidebar.chats")}
-                </span>
-                <Show when={props.onNewTabInProject}>
-                  {(create) => (
-                    <Tooltip placement="right" value={language.t("command.session.new")}>
-                      <IconButton
-                        size="small"
-                        variant="ghost-muted"
-                        icon={<Icon name="plus" size="small" />}
-                        aria-label={language.t("command.session.new")}
-                        onClick={() => create()(undefined)}
-                      />
-                    </Tooltip>
-                  )}
-                </Show>
-              </div>
-            </Show>
-            <For each={unassignedTabs()}>{(tab) => renderTabItem(tab)}</For>
+            <div
+              data-sidebar-unassigned-drop={vertical() ? "" : undefined}
+              class="flex w-full min-w-0"
+              classList={{
+                "flex-row items-center": !vertical(),
+                "flex-col items-stretch rounded-[6px] transition-colors": vertical(),
+                "ring-1 ring-v2-border-border-base bg-v2-background-bg-layer-02/50":
+                  vertical() && dragDrop.targetFolderID === "__unassigned__",
+              }}
+            >
+              <For each={unassignedTabs()}>{(tab) => renderTabItem(tab, "__unassigned__")}</For>
+            </div>
           </div>
         </DragDropProvider>
       </div>
@@ -507,7 +584,8 @@ export function TitlebarTabStrip(props: {
 
 function VerticalSidebarProjects(props: {
   tabs: Tab[]
-  renderTab: (tab: Tab) => ReturnType<typeof SessionTabEntry>
+  dropTargetFolderID: string | undefined
+  renderTab: (tab: Tab, group?: string) => ReturnType<typeof SessionTabEntry>
   onNewTabInProject: (folderID: string) => void
 }) {
   const language = useLanguage()
@@ -553,21 +631,16 @@ function VerticalSidebarProjects(props: {
 
   return (
     <div data-slot="vertical-sidebar-projects" class="mb-1 flex flex-col gap-0.5">
-      <div class="flex h-6 items-center justify-between px-1.5">
-        <span class="text-[11px] leading-4 text-v2-text-text-faint [font-weight:530]">
-          {language.t("sidebar.projects")}
-        </span>
-        <Tooltip placement="right" value={language.t("sidebar.projects.new")}>
-          <IconButton
-            data-action="sidebar-new-project"
-            size="small"
-            variant="ghost-muted"
-            icon={<Icon name="plus" size="small" />}
-            aria-label={language.t("sidebar.projects.new")}
-            onClick={openCreator}
-          />
-        </Tooltip>
-      </div>
+      <button
+        type="button"
+        data-sidebar-project-row
+        data-action="sidebar-new-project"
+        class="flex h-7 w-full shrink-0 items-center gap-1.5 rounded-[6px] ps-1.5 pe-2 text-[13px] leading-4 text-v2-text-text-faint hover:bg-v2-background-bg-layer-02 hover:text-v2-text-text-base"
+        onClick={openCreator}
+      >
+        <Icon name="folder-add-left" class="shrink-0" />
+        <span class="min-w-0 truncate">{language.t("sidebar.projects.new")}</span>
+      </button>
 
       <Show when={state.creating}>
         <div
@@ -629,6 +702,7 @@ function VerticalSidebarProjects(props: {
           const collapsed = () => org.isFolderCollapsed(folder.id)
           const editing = () => state.editingID === folder.id
           const menuOpen = () => state.menuID === folder.id
+          const isDropTarget = () => props.dropTargetFolderID === folder.id
 
           const saveEdit = () => {
             if (state.editingID !== folder.id) return
@@ -637,7 +711,13 @@ function VerticalSidebarProjects(props: {
           }
 
           return (
-            <div class="flex flex-col">
+            <div
+              data-sidebar-project-drop={folder.id}
+              class="flex flex-col rounded-[6px] transition-colors"
+              classList={{
+                "ring-1 ring-v2-border-border-base bg-v2-background-bg-layer-02/70": isDropTarget(),
+              }}
+            >
               <div
                 data-sidebar-project-row
                 data-sidebar-project-id={folder.id}
@@ -788,7 +868,7 @@ function VerticalSidebarProjects(props: {
 
               <Show when={!collapsed() && projectTabs().length > 0}>
                 <div class="ms-2.5 flex flex-col border-s border-v2-border-border-base/60 ps-1.5">
-                  <For each={projectTabs()}>{(tab) => props.renderTab(tab)}</For>
+                  <For each={projectTabs()}>{(tab) => props.renderTab(tab, folder.id)}</For>
                 </div>
               </Show>
             </div>
@@ -869,18 +949,6 @@ function VerticalSidebarArchived() {
                       <span class="min-w-0 flex-1 truncate">
                         {item.title ?? language.t("session.tab.session")}
                       </span>
-                      <Show when={item.folder}>
-                        {(folder) => (
-                          <span
-                            class={`inline-flex h-4 max-w-20 shrink-0 items-center gap-1 rounded-[4px] border px-1 text-[10px] leading-4 ${ORGANIZE_COLOR_STYLES[folder().color].pill}`}
-                          >
-                            <span
-                              class={`size-1.5 shrink-0 rounded-full ${ORGANIZE_COLOR_STYLES[folder().color].dot}`}
-                            />
-                            <span class="truncate">{folder().name}</span>
-                          </span>
-                        )}
-                      </Show>
                     </Menu.Context.Trigger>
                     <div class="hover-reveal flex shrink-0 items-center gap-0.5 group-hover/arch:opacity-100">
                       <Tooltip placement="top" value={language.t("session.organize.unarchive")}>

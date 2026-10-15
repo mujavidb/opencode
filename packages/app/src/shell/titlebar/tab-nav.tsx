@@ -398,17 +398,6 @@ export function TabNavItem(props: {
             event.preventDefault()
           }}
         />
-        <Show when={props.orientation === "vertical" && !editing() ? assignedFolder() : undefined}>
-          {(folder) => (
-            <span
-              data-slot="tab-project-pill"
-              class={`inline-flex h-4 max-w-20 shrink-0 items-center gap-1 rounded-[4px] border px-1 text-[10px] leading-4 ${ORGANIZE_COLOR_STYLES[folder().color].pill}`}
-            >
-              <span class={`size-1.5 shrink-0 rounded-full ${ORGANIZE_COLOR_STYLES[folder().color].dot}`} />
-              <span class="truncate">{folder().name}</span>
-            </span>
-          )}
-        </Show>
       </Menu.Context.Trigger>
 
       <div data-slot="tab-close" class="flex shrink-0 items-center gap-0.5">
@@ -548,12 +537,6 @@ export function DraftTabItem(props: {
   const org = useSessionOrganization()
   const chatKey = () => (props.draftID ? `draft:${props.draftID}` : undefined)
 
-  const assignedFolder = createMemo(() => {
-    const key = chatKey()
-
-    return key ? org.folderForSession(key) : undefined
-  })
-
   const closeTab = (event: MouseEvent) => {
     event.preventDefault()
     event.stopPropagation()
@@ -634,17 +617,6 @@ export function DraftTabItem(props: {
           >
             {props.title}
           </span>
-          <Show when={props.orientation === "vertical" ? assignedFolder() : undefined}>
-            {(folder) => (
-              <span
-                data-slot="tab-project-pill"
-                class={`inline-flex h-4 max-w-20 shrink-0 items-center gap-1 rounded-[4px] border px-1 text-[10px] leading-4 ${ORGANIZE_COLOR_STYLES[folder().color].pill}`}
-              >
-                <span class={`size-1.5 shrink-0 rounded-full ${ORGANIZE_COLOR_STYLES[folder().color].dot}`} />
-                <span class="truncate">{folder().name}</span>
-              </span>
-            )}
-          </Show>
         </Menu.Context.Trigger>
         <div data-slot="tab-close">
           <IconButton
