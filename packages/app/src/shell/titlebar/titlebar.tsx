@@ -5,6 +5,7 @@ import { useLocation, useNavigate } from "@solidjs/router"
 import { IconButton } from "@opencode/ui/icon-button"
 import { Icon } from "@opencode/ui/icon"
 import { Keybind } from "@opencode/ui/keybind"
+import { Logo } from "@opencode/ui/logo"
 import { Tooltip } from "@opencode/ui/tooltip"
 
 import { LayoutRoute, useLayout } from "@/shell/state/layout"
@@ -807,6 +808,30 @@ function ChannelIndicator(props: { horizontal?: boolean; sidebar?: boolean }) {
   const platform = usePlatform()
   const host = useExtensionHost()
   const channel = import.meta.env.VITE_OPENCODE_CHANNEL
+
+  if (props.sidebar) {
+    const debug = () =>
+      channel === "dev" || channel === "local"
+        ? host.list(TitlebarItem).find((item) => item.placement === "channel")
+        : undefined
+
+    return (
+      <Dynamic
+        component={debug() ? "button" : "div"}
+        type={debug() ? "button" : undefined}
+        data-slot="channel-indicator"
+        class="mb-3 ms-1.5 flex h-7 w-fit shrink-0 items-center rounded-[6px] px-0.5 [app-region:no-drag]"
+        classList={{
+          "cursor-pointer hover:opacity-80 focus-visible:outline-none": !!debug(),
+        }}
+        onClick={() => debug()?.run?.()}
+        aria-label={debug()?.label}
+        aria-pressed={debug()?.pressed}
+      >
+        <Logo class="h-3.5 w-auto" />
+      </Dynamic>
+    )
+  }
 
   if (!channel || channel === "prod") return null
 
