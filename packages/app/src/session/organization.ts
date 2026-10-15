@@ -1,6 +1,6 @@
 import { batch, createComponent, createContext, useContext, type ParentProps } from "solid-js"
 import { createStore, produce } from "solid-js/store"
-import { Predicate, Schema } from "effect"
+import { Option, Predicate, Schema } from "effect"
 import type { SessionInfo } from "@opencode/client/promise"
 import { Persist, persisted } from "@/runtime/persistence/storage"
 import { Persistence } from "@/runtime/persistence/schema"
@@ -58,11 +58,32 @@ export function initialSessionOrganization(): SessionOrganizationState {
   }
 }
 
+export const SessionOrgMetadataSchema = Persistence.struct({
+  archivedAt: Persistence.optional(Schema.Finite),
+  pinnedAt: Persistence.optional(Schema.Finite),
+  folderID: Persistence.optional(Schema.String),
+  folderName: Persistence.optional(Schema.String),
+  folderColor: Persistence.optional(OrganizeColorSchema),
+  projectDirectory: Persistence.optional(Schema.String),
+  tags: Persistence.optional(Persistence.array(Schema.String)),
+})
+
+const decodeOrgMetadata = Schema.decodeUnknownOption(SessionOrgMetadataSchema)
+
+export function readSessionOrgMetadata(session: Pick<SessionInfo, "metadata">): SessionOrgEntry | undefined {
+  const raw = session.metadata?.org
+
+  if (!raw || !Predicate.isObject(raw)) return undefined
+  const decoded = decodeOrgMetadata(raw)
+
+  return Option.isSome(decoded) ? decoded.value : undefined
+}
+
 export function isSessionArchived(
   state: Pick<SessionOrganizationState, "sessions">,
-  session: Pick<SessionInfo, "id" | "time">,
+  session: Pick<SessionInfo, "id" | "time" | "metadata">,
 ) {
-  const entry = state.sessions[session.id]
+  const entry = state.sessions[session.id] ?? readSessionOrgMetadata(session)
 
   if (entry?.archivedAt !== undefined) return entry.archivedAt > 0
 
@@ -75,13 +96,17 @@ export function isSessionPinned(state: Pick<SessionOrganizationState, "sessions"
 
 export function sessionEffectiveDirectory(
   state: Pick<SessionOrganizationState, "sessions">,
-  session: Pick<SessionInfo, "id" | "location">,
+  session: Pick<SessionInfo, "id" | "location" | "metadata">,
 ) {
-  return state.sessions[session.id]?.projectDirectory ?? session.location.directory
+  return (
+    state.sessions[session.id]?.projectDirectory ??
+    readSessionOrgMetadata(session)?.projectDirectory ??
+    session.location.directory
+  )
 }
 
 export function applySessionOrganization(state: Pick<SessionOrganizationState, "sessions">, session: SessionInfo) {
-  const override = state.sessions[session.id]?.projectDirectory
+  const override = sessionEffectiveDirectory(state, session)
 
   if (!override || pathKey(override) === pathKey(session.location.directory)) return session
 
@@ -490,6 +515,59 @@ function createSessionOrganizationController(persistedStore?: ReturnType<typeof 
           if (entry) delete entry.tags
         }),
       )
+    },
+    hydrateFromSessions(sessions: readonly SessionInfo[]) {
+      setStore(
+        produce((draft) => {
+          for (const session of sessions) {
+            const raw = session.metadata?.org
+
+            if (!raw || !Predicate.isObject(raw)) continue
+            const decoded = decodeOrgMetadata(raw)
+
+            if (Option.isNone(decoded)) continue
+            const meta = decoded.value
+
+            if (meta.folderID && meta.folderName && !draft.folders.some((f) => f.id === meta.folderID)) {
+              draft.folders.push({
+                id: meta.folderID,
+                name: meta.folderName,
+                color: meta.folderColor ?? "blue",
+                createdAt: Date.now(),
+              })
+            }
+
+            if (!draft.sessions[session.id]) {
+              draft.sessions[session.id] = {
+                archivedAt: meta.archivedAt,
+                pinnedAt: meta.pinnedAt,
+                folderID: meta.folderID,
+                projectDirectory: meta.projectDirectory,
+                tags: meta.tags ? [...meta.tags] : undefined,
+              }
+            }
+          }
+        }),
+      )
+    },
+    serializeMetadata(session: SessionInfo) {
+      const entry = store.sessions[session.id]
+      const folder = entry?.folderID ? store.folders.find((f) => f.id === entry.folderID) : undefined
+
+      return {
+        ...(session.metadata ?? {}),
+        org: entry
+          ? {
+              archivedAt: entry.archivedAt ?? null,
+              pinnedAt: entry.pinnedAt ?? null,
+              folderID: entry.folderID ?? null,
+              folderName: folder?.name ?? null,
+              folderColor: folder?.color ?? null,
+              projectDirectory: entry.projectDirectory ?? null,
+              tags: entry.tags ? [...entry.tags] : [],
+            }
+          : null,
+      }
     },
   }
 }

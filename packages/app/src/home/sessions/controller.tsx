@@ -217,6 +217,20 @@ export function createHomeSessionsController(home: HomeController) {
     void Promise.allSettled(Array.from(locations.values(), (location) => ctx.data.location.vcs.sync(location)))
   }
 
+  const syncSessionMetadata = (session: SessionInfo) => {
+    const ctx = home.server.focusedContext()
+
+    if (!ctx) return
+    const metadata = org.serializeMetadata(session)
+    void ctx.sdk.api.session.update({ sessionID: session.id, metadata }).catch(() => {})
+  }
+
+  createEffect(() => {
+    const list = indexedSessions()
+
+    if (list.length > 0) untrack(() => org.hydrateFromSessions(list))
+  })
+
   createEffect(() => {
     const ctx = home.server.focusedContext()
     const conn = home.server.focused()
@@ -440,12 +454,14 @@ export function createHomeSessionsController(home: HomeController) {
       projects: home.project.list,
       togglePin: (session: SessionInfo) => {
         org.togglePin(session.id)
+        syncSessionMetadata(session)
       },
       assignProject: (session: SessionInfo, directory: string) => {
         const conn = home.server.focused()
 
         if (!conn) return
         home.organize.assignSessionsToProject(conn, [session.id], directory)
+        syncSessionMetadata(session)
       },
       chooseProjectDirectory: (session: SessionInfo) => {
         chooseDirectoryForSessions([session.id])
@@ -459,6 +475,7 @@ export function createHomeSessionsController(home: HomeController) {
               const conn = home.server.focused()
 
               if (conn) home.organize.assignSessionsToProject(conn, [session.id], directory)
+              syncSessionMetadata(session)
             }}
             onChooseDirectory={() => chooseDirectoryForSessions([session.id])}
           />
@@ -466,6 +483,7 @@ export function createHomeSessionsController(home: HomeController) {
       },
       assignFolder: (session: SessionInfo, folderID: string | undefined) => {
         org.assignFolder(session.id, folderID)
+        syncSessionMetadata(session)
         const folder = org.folder(folderID)
         showToast({
           title: folder
@@ -483,9 +501,11 @@ export function createHomeSessionsController(home: HomeController) {
       },
       toggleTag: (session: SessionInfo, tag: string) => {
         org.toggleTag(session.id, tag)
+        syncSessionMetadata(session)
       },
       clearTags: (session: SessionInfo) => {
         org.clearTags(session.id)
+        syncSessionMetadata(session)
       },
       openCreateTagDialog: (sessionIDs: readonly string[]) => {
         void dialog.show(() => <DialogCreateTag sessionIDs={sessionIDs} />)
@@ -679,6 +699,7 @@ export function createHomeSessionsController(home: HomeController) {
 
         if (org.isArchived(session)) {
           org.unarchive(session.id)
+          syncSessionMetadata(session)
           showToast({
             variant: "success",
             icon: "circle-check",
@@ -693,6 +714,7 @@ export function createHomeSessionsController(home: HomeController) {
           session,
           archive: async (sessionID) => {
             org.archive(sessionID)
+            syncSessionMetadata(session)
           },
           remove() {
             showToast({
