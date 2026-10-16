@@ -356,31 +356,49 @@ export function TabNavItem(props: {
         }}
         class="flex h-full min-w-0 flex-1 flex-row items-center gap-1.5 text-[13px] font-medium text-v2-text-text-faint group-data-[unread='true']:text-v2-text-text-base group-data-[active='true']:text-v2-text-text-base group-data-[editing='true']:text-v2-text-text-base [-webkit-user-drag:none]"
       >
-        <span data-slot="project-avatar-slot" class="flex size-4 shrink-0 items-center justify-center">
-          <Show
-            when={props.session}
-            keyed
-            fallback={
-              <Show
-                when={props.preparing}
-                fallback={
-                  <span class="block size-4 rounded-[3px] border border-v2-border-border-muted" aria-hidden="true" />
-                }
-              >
+        <Show
+          when={props.orientation !== "vertical"}
+          fallback={
+            <Show
+              when={props.preparing}
+              fallback={
+                <Show when={isUnread()}>
+                  <span class="size-1.5 shrink-0 rounded-full bg-v2-icon-icon-accent" aria-hidden="true" />
+                </Show>
+              }
+            >
+              <span data-slot="project-avatar-slot" class="flex size-4 shrink-0 items-center justify-center">
                 <SessionProgressIndicatorV2 />
-              </Show>
-            }
-          >
-            {(session) => (
-              <SessionTabAvatar
-                project={project()}
-                directory={session.location.directory}
-                sessionId={session.id}
-                server={props.server}
-              />
-            )}
-          </Show>
-        </span>
+              </span>
+            </Show>
+          }
+        >
+          <span data-slot="project-avatar-slot" class="flex size-4 shrink-0 items-center justify-center">
+            <Show
+              when={props.session}
+              keyed
+              fallback={
+                <Show
+                  when={props.preparing}
+                  fallback={
+                    <span class="block size-4 rounded-[3px] border border-v2-border-border-muted" aria-hidden="true" />
+                  }
+                >
+                  <SessionProgressIndicatorV2 />
+                </Show>
+              }
+            >
+              {(session) => (
+                <SessionTabAvatar
+                  project={project()}
+                  directory={session.location.directory}
+                  sessionId={session.id}
+                  server={props.server}
+                />
+              )}
+            </Show>
+          </span>
+        </Show>
         <span
           ref={(el) => {
             titleEl = el
@@ -511,10 +529,7 @@ export function TabNavItem(props: {
                               org.assignFolder(id(), org.folderID(id()) === folder.id ? undefined : folder.id)
                             }
                           >
-                            <span class="flex items-center gap-2">
-                              <span class={`size-2 rounded-full ${ORGANIZE_COLOR_STYLES[folder.color].dot}`} />
-                              <span class="max-w-44 truncate">{folder.name}</span>
-                            </span>
+                            <span class="max-w-44 truncate">{folder.name}</span>
                           </Menu.CheckboxItem>
                         )}
                       </For>
@@ -635,22 +650,24 @@ export function DraftTabItem(props: {
           }}
           class="flex h-full min-w-0 flex-1 flex-row items-center gap-1.5 text-[13px] font-medium text-v2-text-text-faint group-data-[active='true']:text-v2-text-text-base [-webkit-user-drag:none]"
         >
-          <span class="flex size-4 shrink-0 items-center justify-center">
-            <svg
-              class="text-v2-icon-icon-muted group-data-[active='true']:text-v2-icon-icon-base"
-              width="16"
-              height="16"
-              viewBox="0 0 16 16"
-              fill="none"
-              xmlns="http://www.w3.org/2000/svg"
-              aria-hidden="true"
-            >
-              <path
-                d="M9.00002 13.5H14M2.60419 10.9167V13.3958H5.08335L13.3959 5.08333L10.9167 2.60416L2.60419 10.9167Z"
-                stroke="currentColor"
-              />
-            </svg>
-          </span>
+          <Show when={props.orientation !== "vertical"}>
+            <span class="flex size-4 shrink-0 items-center justify-center">
+              <svg
+                class="text-v2-icon-icon-muted group-data-[active='true']:text-v2-icon-icon-base"
+                width="16"
+                height="16"
+                viewBox="0 0 16 16"
+                fill="none"
+                xmlns="http://www.w3.org/2000/svg"
+                aria-hidden="true"
+              >
+                <path
+                  d="M9.00002 13.5H14M2.60419 10.9167V13.3958H5.08335L13.3959 5.08333L10.9167 2.60416L2.60419 10.9167Z"
+                  stroke="currentColor"
+                />
+              </svg>
+            </span>
+          </Show>
           <span
             data-titlebar-tab-title
             class="min-w-0 flex-1 overflow-hidden text-clip whitespace-nowrap outline-none leading-4"
@@ -696,10 +713,7 @@ export function DraftTabItem(props: {
                               org.assignFolder(key(), org.folderID(key()) === folder.id ? undefined : folder.id)
                             }
                           >
-                            <span class="flex items-center gap-2">
-                              <span class={`size-2 rounded-full ${ORGANIZE_COLOR_STYLES[folder.color].dot}`} />
-                              <span class="max-w-44 truncate">{folder.name}</span>
-                            </span>
+                            <span class="max-w-44 truncate">{folder.name}</span>
                           </Menu.CheckboxItem>
                         )}
                       </For>

@@ -695,16 +695,8 @@ function VerticalSidebarProjects(props: {
       <Show when={state.creating}>
         <div
           data-sidebar-project-row
-          class="flex h-7 items-center gap-1.5 rounded-[6px] bg-v2-background-bg-layer-02 px-1.5"
+          class="flex h-7 items-center gap-1.5 rounded-[6px] bg-v2-background-bg-layer-02 px-2"
         >
-          <button
-            type="button"
-            aria-label={language.t("sidebar.projects.color")}
-            class="flex size-4 shrink-0 items-center justify-center rounded-[4px] hover:bg-v2-background-bg-layer-03"
-            onClick={cycleColor}
-          >
-            <span class={`size-2.5 rounded-full ${ORGANIZE_COLOR_STYLES[state.newColor].dot}`} />
-          </button>
           <input
             ref={(el) => (creatorInputRef = el)}
             value={state.newName}
@@ -782,7 +774,6 @@ function VerticalSidebarProjects(props: {
                   when={!editing()}
                   fallback={
                     <div class="flex h-7 w-full items-center gap-1.5 px-1">
-                      <span class={`size-2 shrink-0 rounded-full ${ORGANIZE_COLOR_STYLES[folder.color].dot}`} />
                       <InlineInput
                         aria-label={language.t("sidebar.projects.rename")}
                         value={state.editDraft}
@@ -826,7 +817,6 @@ function VerticalSidebarProjects(props: {
                       class="shrink-0 text-v2-icon-icon-muted transition-transform duration-150"
                       style={{ transform: `rotate(${collapsed() ? -90 : 0}deg)` }}
                     />
-                    <span class={`size-2 shrink-0 rounded-full ${ORGANIZE_COLOR_STYLES[folder.color].dot}`} />
                     <span class="min-w-0 flex-1 truncate">{folder.name}</span>
                     <Show when={projectTabs().length > 0}>
                       <span class="shrink-0 pe-1 text-[11px] leading-4 text-v2-text-text-faint group-hover/sproj:opacity-0">
@@ -885,26 +875,6 @@ function VerticalSidebarProjects(props: {
                           >
                             {language.t("common.rename")}
                           </Menu.Item>
-                          <Menu.Sub>
-                            <Menu.SubTrigger>{language.t("sidebar.projects.color")}</Menu.SubTrigger>
-                            <Menu.Portal>
-                              <Menu.SubContent>
-                                <For each={ORGANIZE_COLORS}>
-                                  {(color) => (
-                                    <Menu.CheckboxItem
-                                      checked={folder.color === color}
-                                      onChange={() => org.setFolderColor(folder.id, color)}
-                                    >
-                                      <span class="flex items-center gap-2">
-                                        <span class={`size-2.5 rounded-full ${ORGANIZE_COLOR_STYLES[color].dot}`} />
-                                        <span>{language.t(`common.color.${color}`)}</span>
-                                      </span>
-                                    </Menu.CheckboxItem>
-                                  )}
-                                </For>
-                              </Menu.SubContent>
-                            </Menu.Portal>
-                          </Menu.Sub>
                           <Menu.Separator />
                           <Menu.Item onSelect={() => org.deleteFolder(folder.id)}>
                             {language.t("common.delete")}
@@ -1037,12 +1007,7 @@ function VerticalSidebarArchived() {
                                     )
                                   }
                                 >
-                                  <span class="flex items-center gap-2">
-                                    <span
-                                      class={`size-2 rounded-full ${ORGANIZE_COLOR_STYLES[folder.color].dot}`}
-                                    />
-                                    <span class="max-w-44 truncate">{folder.name}</span>
-                                  </span>
+                                  <span class="max-w-44 truncate">{folder.name}</span>
                                 </Menu.CheckboxItem>
                               )}
                             </For>

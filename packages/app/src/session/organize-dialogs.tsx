@@ -80,25 +80,6 @@ export function DialogCreateFolder(props: {
             submit()
           }}
         />
-        <div class="flex items-center gap-1.5 py-1">
-          <For each={ORGANIZE_COLORS}>
-            {(color) => (
-              <button
-                type="button"
-                aria-label={language.t("dialog.project.edit.color.select", { color: language.t(`common.color.${color}`) })}
-                aria-pressed={state.color === color}
-                class="flex size-6 items-center justify-center rounded-full border transition-transform"
-                classList={{
-                  "border-v2-text-text-base scale-110": state.color === color,
-                  "border-transparent opacity-70 hover:opacity-100": state.color !== color,
-                }}
-                onClick={() => setState("color", color)}
-              >
-                <span class={`size-4 rounded-full ${ORGANIZE_COLOR_STYLES[color].dot}`} />
-              </button>
-            )}
-          </For>
-        </div>
       </DialogBody>
       <DialogFooter>
         <Button variant="ghost" onClick={() => dialog.close()}>
