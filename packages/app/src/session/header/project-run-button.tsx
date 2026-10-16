@@ -192,7 +192,8 @@ export function ProjectRunButton(props: { directory: string | undefined }) {
     <Show when={platform.projectRunner && props.directory}>
       <div
         data-component="project-run-control"
-        class="inline-flex h-7 shrink-0 flex-row items-center overflow-hidden rounded-[6px] shadow-[inset_0_0_0_1px_var(--v2-border-border-muted)]"
+        data-open={state.open ? "true" : undefined}
+        class="inline-flex h-7 shrink-0 flex-row items-center overflow-hidden rounded-[6px] hover:shadow-[inset_0_0_0_1px_var(--v2-border-border-muted)] data-[open=true]:shadow-[inset_0_0_0_1px_var(--v2-border-border-muted)]"
         onPointerDown={(event) => event.stopPropagation()}
       >
         <Tooltip
