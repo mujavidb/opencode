@@ -74,7 +74,7 @@ function modelLabel(
 
 function MessageActionButton(
   props: Pick<ComponentProps<"button">, "disabled" | "onMouseDown" | "onClick" | "aria-label"> & {
-    icon: "check" | "copy" | "reset" | "split" | "arrow-down-to-line" | "outline-trash"
+    icon: "check" | "copy" | "reset" | "fork-right" | "arrow-down-to-line" | "outline-trash"
     label: JSX.Element
   },
 ) {
@@ -444,7 +444,7 @@ export function CurrentUserMessageDisplay(props: {
           </Show>
           <Show when={props.actions?.fork && !pending()}>
             <MessageActionButton
-              icon="split"
+              icon="fork-right"
               label={i18n.t("ui.message.forkMessage")}
               disabled={state.forking}
               onMouseDown={(event) => event.preventDefault()}
@@ -715,7 +715,7 @@ export function AssistantTextContent(props: {
             />
             <Show when={props.onFork}>
               <MessageActionButton
-                icon="split"
+                icon="fork-right"
                 label={i18n.t("ui.message.forkMessage")}
                 disabled={state.forking}
                 onMouseDown={(event) => event.preventDefault()}

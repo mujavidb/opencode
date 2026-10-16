@@ -31,7 +31,28 @@ export type FatalRendererErrorLog = {
   os?: DesktopOS
 }
 
+export type ProjectRunnerStatus = {
+  directory: string
+  configPath: string
+  configured: boolean
+  command: string
+  port?: number
+  url?: string
+  running: boolean
+  pid?: number
+  logs: string[]
+  action?: "started" | "already-running" | "stopped" | "saved" | "unconfigured"
+}
+
 type PlatformBase = {
+  /** Per-folder dev server runner backed by ~/.config/opencode/run.json (desktop only) */
+  projectRunner?: {
+    status(directory: string): Promise<ProjectRunnerStatus>
+    save(input: { directory: string; command: string; port?: number; url?: string }): Promise<ProjectRunnerStatus>
+    start(input: { directory: string; command?: string; port?: number; url?: string }): Promise<ProjectRunnerStatus>
+    stop(directory: string): Promise<ProjectRunnerStatus>
+  }
+
   /** App version */
   version?: string
 

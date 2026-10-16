@@ -91,4 +91,8 @@ export const api: ElectronAPI = {
   setForceFocus: (enabled) => invoke("AppSetForceFocus", { enabled }),
   recordFatalRendererError: (error) => invoke("AppRecordFatalRendererError", { error }),
   setNativeTranslations: (bundle) => invoke("AppSetNativeTranslations", { value: bundle }),
+  projectRunnerStatus: (directory) => invoke("AppProjectRunnerStatus", { directory }).then(mutable),
+  projectRunnerSave: (input) => invoke("AppProjectRunnerSave", input).then(mutable),
+  projectRunnerStart: (input) => invoke("AppProjectRunnerStart", input).then(mutable),
+  projectRunnerStop: (directory) => invoke("AppProjectRunnerStop", { directory }).then(mutable),
 }

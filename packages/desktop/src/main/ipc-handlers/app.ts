@@ -14,6 +14,12 @@ import { ApplicationLifecycle } from "../lifecycle"
 import { finishFirstLaunchOnboarding, isFirstLaunchOnboardingPending } from "../lifecycle/onboarding"
 import { BackgroundService } from "../service/background-service"
 import { DesktopCli } from "../service/desktop-cli"
+import {
+  getProjectRunnerStatus,
+  saveProjectRunnerConfig,
+  startOrCheckProjectServer,
+  stopProjectServer,
+} from "../service/project-runner"
 import { SidecarCredentials } from "../service/sidecar-credentials"
 import { getLastFocusedWindow, setBackgroundColor } from "../windows"
 import { sender } from "./context"
@@ -68,6 +74,10 @@ export const appHandlers = AppRpcs.toLayer(
           })
         }),
       AppRelaunch: () => Effect.sync(lifecycle.relaunch),
+      AppProjectRunnerStatus: ({ directory }) => promise(() => getProjectRunnerStatus(directory)),
+      AppProjectRunnerSave: (payload) => promise(() => saveProjectRunnerConfig(payload)),
+      AppProjectRunnerStart: (payload) => promise(() => startOrCheckProjectServer(payload)),
+      AppProjectRunnerStop: ({ directory }) => promise(() => stopProjectServer(directory)),
     })
   }),
 )

@@ -256,7 +256,7 @@ export function SessionMessageRail(props: {
                 <Show when={props.onFork}>
                   <Tooltip value={language.t("command.session.fork")} placement="top" gutter={4}>
                     <IconButton
-                      icon={<Icon name="split" size="small" />}
+                      icon={<Icon name="fork-right" size="small" />}
                       size="small"
                       variant="ghost-muted"
                       class="shrink-0"

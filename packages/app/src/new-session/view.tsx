@@ -21,6 +21,7 @@ import { Persist, persisted } from "@/runtime/persistence/storage"
 import { Persistence } from "@/runtime/persistence/schema"
 import type { NewSessionWorkspaceController } from "./workspace/controller"
 import { NewSessionWordmark } from "./wordmark"
+import { ProjectRunButton } from "@/session/header/project-run-button"
 
 const providerTipDismissalDuration = 30 * 24 * 60 * 60 * 1000
 
@@ -61,6 +62,13 @@ export function NewSessionView(props: {
           active={props.composer.state.drag === "active"}
           input={props.composer.model.selection.current()?.capabilities.input}
         />
+        <Show when={props.project.selected()?.worktree}>
+          {(dir) => (
+            <div class="absolute end-3 top-2.5 z-20 flex items-center">
+              <ProjectRunButton directory={dir()} />
+            </div>
+          )}
+        </Show>
         <div class="absolute inset-x-0 top-[25.375%] flex justify-center px-6">
           <div class={NEW_SESSION_CONTENT_WIDTH}>
             <NewSessionWordmark />

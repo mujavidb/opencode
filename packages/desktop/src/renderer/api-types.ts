@@ -68,4 +68,62 @@ export type ElectronAPI = {
   setForceFocus(enabled: boolean): Promise<void>
   recordFatalRendererError(error: FatalRendererError): Promise<void>
   setNativeTranslations(bundle: DesktopNativeBundle): Promise<void>
+  projectRunnerStatus(directory: string): Promise<{
+    directory: string
+    configPath: string
+    configured: boolean
+    command: string
+    port?: number
+    url?: string
+    running: boolean
+    pid?: number
+    logs: string[]
+    action?: "started" | "already-running" | "stopped" | "saved" | "unconfigured"
+  }>
+  projectRunnerSave(input: {
+    directory: string
+    command: string
+    port?: number
+    url?: string
+  }): Promise<{
+    directory: string
+    configPath: string
+    configured: boolean
+    command: string
+    port?: number
+    url?: string
+    running: boolean
+    pid?: number
+    logs: string[]
+    action?: "started" | "already-running" | "stopped" | "saved" | "unconfigured"
+  }>
+  projectRunnerStart(input: {
+    directory: string
+    command?: string
+    port?: number
+    url?: string
+  }): Promise<{
+    directory: string
+    configPath: string
+    configured: boolean
+    command: string
+    port?: number
+    url?: string
+    running: boolean
+    pid?: number
+    logs: string[]
+    action?: "started" | "already-running" | "stopped" | "saved" | "unconfigured"
+  }>
+  projectRunnerStop(directory: string): Promise<{
+    directory: string
+    configPath: string
+    configured: boolean
+    command: string
+    port?: number
+    url?: string
+    running: boolean
+    pid?: number
+    logs: string[]
+    action?: "started" | "already-running" | "stopped" | "saved" | "unconfigured"
+  }>
 }

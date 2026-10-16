@@ -60,6 +60,49 @@ export const AppSetNativeTranslations = Rpc.make("AppSetNativeTranslations", {
 
 export const AppRelaunch = Rpc.make("AppRelaunch")
 
+export const ProjectRunStatusSchema = Schema.Struct({
+  directory: Schema.String,
+  configPath: Schema.String,
+  configured: Schema.Boolean,
+  command: Schema.String,
+  port: Schema.optionalKey(Schema.Number),
+  url: Schema.optionalKey(Schema.String),
+  running: Schema.Boolean,
+  pid: Schema.optionalKey(Schema.Number),
+  logs: Schema.Array(Schema.String),
+  action: Schema.optionalKey(Schema.Literals(["started", "already-running", "stopped", "saved", "unconfigured"])),
+})
+
+export const AppProjectRunnerStatus = Rpc.make("AppProjectRunnerStatus", {
+  payload: { directory: Schema.String },
+  success: ProjectRunStatusSchema,
+})
+
+export const AppProjectRunnerSave = Rpc.make("AppProjectRunnerSave", {
+  payload: {
+    directory: Schema.String,
+    command: Schema.String,
+    port: Schema.optionalKey(Schema.Number),
+    url: Schema.optionalKey(Schema.String),
+  },
+  success: ProjectRunStatusSchema,
+})
+
+export const AppProjectRunnerStart = Rpc.make("AppProjectRunnerStart", {
+  payload: {
+    directory: Schema.String,
+    command: Schema.optionalKey(Schema.String),
+    port: Schema.optionalKey(Schema.Number),
+    url: Schema.optionalKey(Schema.String),
+  },
+  success: ProjectRunStatusSchema,
+})
+
+export const AppProjectRunnerStop = Rpc.make("AppProjectRunnerStop", {
+  payload: { directory: Schema.String },
+  success: ProjectRunStatusSchema,
+})
+
 export const AppRpcs = RpcGroup.make(
   AppAwaitInitialization,
   AppReconnectService,
@@ -74,4 +117,8 @@ export const AppRpcs = RpcGroup.make(
   AppRecordFatalRendererError,
   AppSetNativeTranslations,
   AppRelaunch,
+  AppProjectRunnerStatus,
+  AppProjectRunnerSave,
+  AppProjectRunnerStart,
+  AppProjectRunnerStop,
 )

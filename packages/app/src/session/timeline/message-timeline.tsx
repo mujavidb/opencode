@@ -26,6 +26,7 @@ import { parseCommentNote, readPromptPresentation } from "@/composer/comment-not
 import { useCommand } from "@/shell/commands/command"
 import { SessionAncestorTrail, SessionProjectMenu, SessionTitleHeader } from "../session-identity-header"
 import { SessionHeaderSpacer } from "@/session/header/session-header"
+import { ProjectRunButton } from "@/session/header/project-run-button"
 import { SessionRunningMenu } from "@/session/header/session-running-menu"
 import { SessionMessageRail } from "./message-rail"
 
@@ -607,6 +608,7 @@ function MessageTimelineView(
               <Show when={sessionID()} keyed>
                 {(_id) => (
                   <div class="shrink-0 flex items-center gap-2">
+                    <ProjectRunButton directory={sessionDirectory()} />
                     {props.search}
                     <ExtensionSlot
                       at="session.header"

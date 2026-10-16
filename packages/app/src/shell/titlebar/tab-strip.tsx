@@ -21,7 +21,6 @@ import { useTabs } from "@/shell/tabs/tabs"
 import { createTabComposerState } from "@/composer/persistence"
 import {
   ORGANIZE_COLORS,
-  ORGANIZE_COLOR_STYLES,
   useSessionOrganization,
   type OrganizeColor,
 } from "@/session/organization"
@@ -672,11 +671,6 @@ function VerticalSidebarProjects(props: {
     setState({ creating: false, newName: "" })
 
     if (folder) org.setFolderCollapsed(folder.id, false)
-  }
-
-  const cycleColor = () => {
-    const idx = ORGANIZE_COLORS.indexOf(state.newColor)
-    setState("newColor", ORGANIZE_COLORS[(idx + 1) % ORGANIZE_COLORS.length])
   }
 
   return (

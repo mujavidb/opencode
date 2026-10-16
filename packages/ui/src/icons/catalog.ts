@@ -286,9 +286,17 @@ const icons = {
     viewBox: "0 0 16 16",
     body: `<path d="M2 8.5V2H8.5L14 7.5L7.5 14L2 8.5Z" stroke="currentColor" stroke-linejoin="round"/><circle cx="5.25" cy="5.25" r="1" fill="currentColor"/>`,
   },
-  split: {
+  "fork-right": {
     viewBox: "0 0 16 16",
     body: `<path d="M2 8H5.5C7 8 7.5 4.5 9.5 4.5H13.5M5.5 8C7 8 7.5 11.5 9.5 11.5H13.5M11.5 2.5L13.5 4.5L11.5 6.5M11.5 9.5L13.5 11.5L11.5 13.5" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"/>`,
+  },
+  play: {
+    viewBox: "0 0 16 16",
+    body: `<path d="M4.5 3.25L12.5 8L4.5 12.75V3.25Z" fill="currentColor" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/>`,
+  },
+  stop: {
+    viewBox: "0 0 16 16",
+    body: `<rect x="4" y="4" width="8" height="8" rx="1.2" fill="currentColor"/>`,
   },
 }
 

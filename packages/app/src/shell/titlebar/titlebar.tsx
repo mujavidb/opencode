@@ -2,7 +2,6 @@ import { createEffect, createMemo, createResource, Match, Show, Switch, untrack 
 import { createStore, unwrap } from "solid-js/store"
 import { Dynamic, Portal } from "solid-js/web"
 import { useLocation, useNavigate } from "@solidjs/router"
-import { IconButton } from "@opencode/ui/icon-button"
 import { Icon } from "@opencode/ui/icon"
 import { Keybind } from "@opencode/ui/keybind"
 import { Logo } from "@opencode/ui/logo"
