@@ -1,7 +1,7 @@
 import { Button } from "@opencode/ui/button"
 import { Icon } from "@opencode/ui/icon"
-import { IconButton } from "@opencode/ui/icon-button"
 import { Popover } from "@opencode/ui/popover"
+import { SplitButton, SplitButtonAction, SplitButtonMenuTrigger } from "@opencode/ui/split-button"
 import { TextInput } from "@opencode/ui/text-input"
 import { Tooltip } from "@opencode/ui/tooltip"
 import { For, Show, createEffect, onCleanup } from "solid-js"
@@ -191,9 +191,14 @@ export function ProjectRunButton(props: { directory: string | undefined }) {
 
   return (
     <Show when={platform.projectRunner && props.directory}>
-      <div data-component="project-run-control" class="flex items-center gap-0.5 shrink-0">
+      <SplitButton
+        data-component="project-run-control"
+        class="session-review-v2-open-in-app"
+        onPointerDown={(event) => event.stopPropagation()}
+      >
         <Tooltip
           placement="bottom"
+          class="flex items-center"
           value={
             running()
               ? `${language.t("projectRunner.status.running")}${state.status?.port ? ` (:${state.status.port})` : ""}`
@@ -202,25 +207,24 @@ export function ProjectRunButton(props: { directory: string | undefined }) {
                 : language.t("projectRunner.run")
           }
         >
-          <button
-            type="button"
+          <SplitButtonAction
             data-action="project-run-play"
             disabled={state.busy}
-            onClick={() => void handlePlayClick()}
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={(event) => {
+              event.stopPropagation()
+              void handlePlayClick()
+            }}
             aria-label={language.t("projectRunner.run")}
-            class="relative flex h-7 items-center gap-1.5 rounded-s-[6px] px-2 text-[12px] font-[530] leading-4 text-v2-text-text-muted hover:bg-v2-overlay-simple-overlay-hover hover:text-v2-text-text-base focus-visible:outline-none disabled:opacity-50"
           >
-            <span class="relative flex size-3.5 items-center justify-center">
+            <span class="relative flex items-center justify-center">
               <Icon
                 name="play"
                 size="small"
-                class={running() ? "text-[#22c55e]" : "text-current"}
+                class={running() ? "text-[#22c55e]" : "text-v2-icon-icon-base"}
               />
             </span>
-            <Show when={running() && state.status?.port}>
-              <span class="text-[11px] text-[#22c55e]">:{state.status?.port}</span>
-            </Show>
-          </button>
+          </SplitButtonAction>
         </Tooltip>
 
         <Popover
@@ -233,14 +237,12 @@ export function ProjectRunButton(props: { directory: string | undefined }) {
           placement="bottom-end"
           gutter={6}
           class="w-80 rounded-[10px] border border-v2-border-border-base bg-v2-background-bg-base p-3 shadow-[var(--v2-elevation-floating)]"
-          triggerAs={IconButton}
+          triggerAs={SplitButtonMenuTrigger}
           triggerProps={{
-            type: "button",
-            size: "small",
-            variant: "ghost-muted",
-            icon: <Icon name="chevron-down" size="small" />,
+            disabled: state.busy,
             "aria-label": language.t("projectRunner.configure"),
-            class: "rounded-s-none rounded-e-[6px]",
+            onPointerDown: (event: PointerEvent) => event.stopPropagation(),
+            children: <Icon name="chevron-down" size="small" />,
           }}
         >
           <div class="flex flex-col gap-2.5">
@@ -335,7 +337,7 @@ export function ProjectRunButton(props: { directory: string | undefined }) {
             </div>
           </div>
         </Popover>
-      </div>
+      </SplitButton>
     </Show>
   )
 }
