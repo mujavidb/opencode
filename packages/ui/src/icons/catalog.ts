@@ -292,7 +292,7 @@ const icons = {
   },
   play: {
     viewBox: "0 0 16 16",
-    body: `<path d="M5 3.25L12.5 8L5 12.75V3.25Z" stroke="currentColor" stroke-linejoin="round"/>`,
+    body: `<path d="M4.5 2.75L13 8L4.5 13.25V2.75Z" stroke="currentColor" stroke-miterlimit="10" stroke-linecap="square"/>`,
   },
   stop: {
     viewBox: "0 0 16 16",

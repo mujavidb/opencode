@@ -1,7 +1,6 @@
 import { Button } from "@opencode/ui/button"
 import { Icon } from "@opencode/ui/icon"
 import { Popover } from "@opencode/ui/popover"
-import { SplitButton, SplitButtonAction, SplitButtonMenuTrigger } from "@opencode/ui/split-button"
 import { TextInput } from "@opencode/ui/text-input"
 import { Tooltip } from "@opencode/ui/tooltip"
 import { For, Show, createEffect, onCleanup } from "solid-js"
@@ -191,14 +190,14 @@ export function ProjectRunButton(props: { directory: string | undefined }) {
 
   return (
     <Show when={platform.projectRunner && props.directory}>
-      <SplitButton
+      <div
         data-component="project-run-control"
-        class="session-review-v2-open-in-app"
+        class="inline-flex h-7 shrink-0 flex-row items-center overflow-hidden rounded-[6px] shadow-[inset_0_0_0_1px_var(--v2-border-border-muted)]"
         onPointerDown={(event) => event.stopPropagation()}
       >
         <Tooltip
           placement="bottom"
-          class="flex items-center"
+          class="inline-flex h-7 items-center"
           value={
             running()
               ? `${language.t("projectRunner.status.running")}${state.status?.port ? ` (:${state.status.port})` : ""}`
@@ -207,7 +206,8 @@ export function ProjectRunButton(props: { directory: string | undefined }) {
                 : language.t("projectRunner.run")
           }
         >
-          <SplitButtonAction
+          <button
+            type="button"
             data-action="project-run-play"
             disabled={state.busy}
             onPointerDown={(event) => event.stopPropagation()}
@@ -216,15 +216,14 @@ export function ProjectRunButton(props: { directory: string | undefined }) {
               void handlePlayClick()
             }}
             aria-label={language.t("projectRunner.run")}
+            class="inline-flex h-7 w-7 shrink-0 items-center justify-center border-0 bg-transparent p-0 text-v2-icon-icon-base hover:bg-v2-overlay-simple-overlay-hover active:bg-v2-overlay-simple-overlay-pressed focus-visible:outline-none disabled:opacity-50"
           >
-            <span class="relative flex items-center justify-center">
-              <Icon
-                name="play"
-                size="small"
-                class={running() ? "text-[#22c55e]" : "text-v2-icon-icon-base"}
-              />
-            </span>
-          </SplitButtonAction>
+            <Icon
+              name="play"
+              size="normal"
+              class={running() ? "text-[#22c55e]" : "text-v2-icon-icon-base"}
+            />
+          </button>
         </Tooltip>
 
         <Popover
@@ -237,13 +236,16 @@ export function ProjectRunButton(props: { directory: string | undefined }) {
           placement="bottom-end"
           gutter={6}
           class="w-80 rounded-[10px] border border-v2-border-border-base bg-v2-background-bg-base p-3 shadow-[var(--v2-elevation-floating)]"
-          triggerAs={SplitButtonMenuTrigger}
+          triggerAs="button"
           triggerProps={{
+            type: "button",
             disabled: state.busy,
             "aria-label": language.t("projectRunner.configure"),
             onPointerDown: (event: PointerEvent) => event.stopPropagation(),
-            children: <Icon name="chevron-down" size="small" />,
+            class:
+              "inline-flex h-7 w-5 shrink-0 items-center justify-center border-0 bg-transparent p-0 text-v2-icon-icon-base hover:bg-v2-overlay-simple-overlay-hover active:bg-v2-overlay-simple-overlay-pressed focus-visible:outline-none disabled:opacity-50",
           }}
+          trigger={<Icon name="chevron-down" size="small" />}
         >
           <div class="flex flex-col gap-2.5">
             <div class="flex items-center justify-between gap-2">
@@ -337,7 +339,7 @@ export function ProjectRunButton(props: { directory: string | undefined }) {
             </div>
           </div>
         </Popover>
-      </SplitButton>
+      </div>
     </Show>
   )
 }
