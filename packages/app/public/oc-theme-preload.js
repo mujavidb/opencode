@@ -1,6 +1,8 @@
 ;(function () {
-  var scheme = localStorage.getItem("opencode-color-scheme") || "system"
-  var isDark = scheme === "dark" || (scheme === "system" && matchMedia("(prefers-color-scheme: dark)").matches)
+  var scheme = localStorage.getItem("opencode-color-scheme-daynight") || "system"
+  var hour = new Date().getHours()
+  var isDay = hour >= 6 && hour < 19
+  var isDark = scheme === "dark" || (scheme === "system" && !isDay)
   var mode = isDark ? "dark" : "light"
   var modeKey = isDark ? "opencode-theme-id-dark" : "opencode-theme-id-light"
   var themeId = localStorage.getItem(modeKey) || localStorage.getItem("opencode-theme-id") || "oc-2"

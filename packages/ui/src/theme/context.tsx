@@ -1,6 +1,6 @@
 // @refresh reload
 
-import { createEffect, onMount } from "solid-js"
+import { createEffect, onCleanup, onMount } from "solid-js"
 import { createStore } from "solid-js/store"
 import { makeEventListener } from "@solid-primitives/event-listener"
 import { createSimpleContext } from "../context/helper"
@@ -15,7 +15,7 @@ const STORAGE_KEYS = {
   THEME_ID: "opencode-theme-id",
   THEME_ID_LIGHT: "opencode-theme-id-light",
   THEME_ID_DARK: "opencode-theme-id-dark",
-  COLOR_SCHEME: "opencode-color-scheme",
+  COLOR_SCHEME: "opencode-color-scheme-daynight",
   THEME_CSS_LIGHT: "opencode-theme-css-light",
   THEME_CSS_DARK: "opencode-theme-css-dark",
 } as const
@@ -141,9 +141,9 @@ function ensureThemeStyleElement(): HTMLStyleElement {
 }
 
 function getSystemMode(): "light" | "dark" {
-  if (typeof window !== "object") return "light"
+  const hour = new Date().getHours()
 
-  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"
+  return hour >= 6 && hour < 19 ? "light" : "dark"
 }
 
 function applyThemeCss(theme: DesktopTheme, themeId: string, mode: "light" | "dark") {
@@ -305,14 +305,17 @@ export const { use: useTheme, provider: ThemeProvider } = createSimpleContext({
     onMount(() => {
       makeEventListener(window, "storage", onStorage)
 
-      const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)")
-
-      const onMedia = () => {
+      const syncTimeMode = () => {
         if (store.colorScheme !== "system") return
-        setStore("mode", getSystemMode())
+        const nextMode = getSystemMode()
+
+        if (store.mode !== nextMode) setStore("mode", nextMode)
       }
 
-      makeEventListener(mediaQuery, "change", onMedia)
+      const interval = setInterval(syncTimeMode, 30_000)
+      onCleanup(() => clearInterval(interval))
+      makeEventListener(window, "focus", syncTimeMode)
+      makeEventListener(document, "visibilitychange", syncTimeMode)
 
       const rawTheme = read(STORAGE_KEYS.THEME_ID) ?? props.defaultTheme
       const savedTheme = resolveStoredTheme(rawTheme, store.themes)
